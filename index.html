@@ -1,50 +1,196 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ChatApp</title>
-  <link rel="stylesheet" href="styles.css">
-  <!-- Firebase App (the core Firebase SDK) -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src("https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connexion / Inscription</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Orbitron', sans-serif;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+      backdrop-filter: blur(10px);
+      width: 350px;
+      animation: fadeIn 2s ease-in-out;
+      position: relative;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #0ff;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-size: 16px;
+      transition: 0.3s;
+    }
+
+    input:focus {
+      outline: none;
+      background: rgba(0, 255, 255, 0.2);
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 8px;
+      background: #0ff;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: #00f0f0;
+    }
+
+    .toggle {
+      margin-top: 15px;
+      text-align: center;
+      cursor: pointer;
+      color: #aaa;
+    }
+
+    .toggle:hover {
+      color: #0ff;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #easter-egg {
+      position: absolute;
+      bottom: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      opacity: 0.2;
+      user-select: none;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </head>
 <body>
-  <div id="login-screen" class="screen">
-    <h2>Se connecter / S'inscrire</h2>
-    <input type="email" id="email-input" placeholder="Email">
-    <input type="password" id="password-input" placeholder="Mot de passe">
-    <button id="login-btn">Se connecter</button>
-    <button id="signup-btn">S'inscrire</button>
-    <p id="login-error" class="error"></p>
+  <div class="container">
+    <h2 id="form-title">Connexion</h2>
+    <input type="email" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Mot de passe" />
+    <button id="action-button">Se connecter</button>
+    <div class="toggle" id="toggle-form">Pas encore inscrit ? Créer un compte</div>
+    <div id="easter-egg">↑ ↑ ↓ ↓ ← → ← → B A</div>
   </div>
 
-  <div id="chat-screen" class="screen hidden">
-    <div class="sidebar">
-      <div class="profile-info">
-        <span id="user-email"></span>
-        <button id="logout-btn">Déconnexion</button>
-      </div>
-      <div class="contacts-list">
-        <h3>Contacts</h3>
-        <ul id="contacts-ul"></ul>
-        <input type="text" id="add-contact-email" placeholder="Ajouter contact par email">
-        <button id="add-contact-btn">Ajouter</button>
-      </div>
-    </div>
-    <div class="chat-area">
-      <div id="chat-header">
-        <span id="chat-with">Sélectionnez un contact</span>
-      </div>
-      <div id="messages-container"></div>
-      <div id="message-input-area" class="hidden">
-        <input type="text" id="message-input" placeholder="Tapez un message">
-        <button id="send-message-btn">Envoyer</button>
-      </div>
-    </div>
-  </div>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.5.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.5.2/firebase-auth-compat.js"></script>
 
-  <script src="app.js"></script>
+  <script>
+    // 🔥 Remplace par tes infos Firebase
+    const firebaseConfig = {
+      apiKey: "TON_API_KEY",
+      authDomain: "TON_DOMAINE.firebaseapp.com",
+      projectId: "TON_PROJECT_ID",
+      appId: "TON_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    let isLogin = true;
+
+    const title = document.getElementById("form-title");
+    const actionButton = document.getElementById("action-button");
+    const toggleForm = document.getElementById("toggle-form");
+
+    toggleForm.addEventListener("click", () => {
+      isLogin = !isLogin;
+      title.textContent = isLogin ? "Connexion" : "Inscription";
+      actionButton.textContent = isLogin ? "Se connecter" : "S'inscrire";
+      toggleForm.textContent = isLogin
+        ? "Pas encore inscrit ? Créer un compte"
+        : "Déjà un compte ? Se connecter";
+    });
+
+    actionButton.addEventListener("click", async () => {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
+
+      if (!email || !password) {
+        alert("Merci de remplir tous les champs !");
+        return;
+      }
+
+      try {
+        if (isLogin) {
+          await auth.signInWithEmailAndPassword(email, password);
+        } else {
+          await auth.createUserWithEmailAndPassword(email, password);
+        }
+        window.location.href = "home.html";
+      } catch (error) {
+        alert("Erreur : " + error.message);
+      }
+    });
+
+    // 🥚 Easter Egg Konami Code
+    const konamiCode = [
+      "ArrowUp", "ArrowUp",
+      "ArrowDown", "ArrowDown",
+      "ArrowLeft", "ArrowRight",
+      "ArrowLeft", "ArrowRight",
+      "b", "a"
+    ];
+
+    let konamiIndex = 0;
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === konamiCode[konamiIndex]) {
+        konamiIndex++;
+        if (konamiIndex === konamiCode.length) {
+          alert("AaaAaAaaAAaAAAaAaAAaAaAaaAAaAAaAaAaAaAaaAaaAAaaaAaaAaaAAAAAAaaaaAAa");
+          document.body.style.background = "radial-gradient(circle, #ff00cc, #333399)";
+          konamiIndex = 0;
+        }
+      } else {
+        konamiIndex = 0;
+      }
+    });
+  </script>
 </body>
 </html>
