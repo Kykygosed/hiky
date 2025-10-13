@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Navigation Display - Capteurs</title>
+  <title>ND avec GPS et Vrai Nord</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     html, body {
@@ -18,9 +18,8 @@
       display: block;
     }
 
-    #permissionBtn {
+    .btn {
       position: absolute;
-      top: 20px;
       left: 50%;
       transform: translateX(-50%);
       background: #444;
@@ -33,6 +32,9 @@
       z-index: 10;
     }
 
+    #permissionBtn { top: 20px; }
+    #gpsBtn { top: 70px; }
+
     #headingDisplay {
       position: absolute;
       bottom: 20px;
@@ -41,13 +43,28 @@
       color: white;
       font-size: 20px;
       font-weight: bold;
+      text-align: center;
+    }
+
+    #gpsInfo {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 14px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
 
-  <button id="permissionBtn">Autoriser les capteurs</button>
-  <div id="headingDisplay">Cap: 0°</div>
+  <button id="permissionBtn" class="btn">Autoriser les capteurs</button>
+  <button id="gpsBtn" class="btn">Demander position GPS</button>
+
+  <div id="gpsInfo">Lat: —, Lon: —</div>
+  <div id="headingDisplay">Cap : 0°</div>
+
   <canvas id="ndCanvas" width="600" height="600"></canvas>
 
   <script>
@@ -57,8 +74,11 @@
     const centerY = canvas.height;
     const radius = 280;
     let heading = 0;
+    let latitude = null;
+    let longitude = null;
 
     const headingDisplay = document.getElementById('headingDisplay');
+    const gpsInfo = document.getElementById('gpsInfo');
 
     function drawND(heading) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -82,7 +102,7 @@
 
       ctx.save();
       ctx.translate(centerX, centerY);
-      ctx.rotate(-heading * Math.PI / 180); // rotation inverse pour donner l'illusion que l'avion tourne
+      ctx.rotate(-heading * Math.PI / 180); // rotation inverse
 
       for (let i = 0; i < ticks; i++) {
         const angle = i * step * Math.PI / 180;
@@ -91,7 +111,6 @@
         const x2 = (radius - 10) * Math.cos(angle);
         const y2 = -(radius - 10) * Math.sin(angle);
 
-        // Traits
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
@@ -99,14 +118,12 @@
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Labels tous les 30°
         if (i % 3 === 0) {
-          const labelAngle = i * step;
-          let label = labelAngle.toFixed(0);
-          if (labelAngle === 0) label = "N";
-          else if (labelAngle === 90) label = "E";
-          else if (labelAngle === 180) label = "S";
-          else if (labelAngle === 270) label = "W";
+          let label = (i * step).toFixed(0);
+          if (label == 0) label = "N";
+          else if (label == 90) label = "E";
+          else if (label == 180) label = "S";
+          else if (label == 270) label = "W";
 
           const tx = (radius - 25) * Math.cos(angle);
           const ty = -(radius - 25) * Math.sin(angle);
@@ -129,51 +146,68 @@
 
     animate();
 
-    // Bouton d'autorisation capteurs
     const permissionBtn = document.getElementById('permissionBtn');
+    const gpsBtn = document.getElementById('gpsBtn');
 
     permissionBtn.addEventListener('click', () => {
       if (
         typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function'
       ) {
-        // iOS - demande de permission
         DeviceOrientationEvent.requestPermission()
           .then((state) => {
             if (state === 'granted') {
-              startListening();
+              startOrientation();
               permissionBtn.style.display = 'none';
             } else {
               alert('Permission refusée.');
             }
           })
-          .catch((err) => {
-            console.error('Erreur dans la demande de permission', err);
-          });
+          .catch(console.error);
       } else {
-        // Android / navigateurs qui n'ont pas besoin de permission
-        startListening();
+        startOrientation();
         permissionBtn.style.display = 'none';
       }
     });
 
-    function startListening() {
+    function startOrientation() {
       window.addEventListener('deviceorientationabsolute', handleOrientation, true);
       window.addEventListener('deviceorientation', handleOrientation, true);
     }
 
     function handleOrientation(event) {
       if (event.webkitCompassHeading !== undefined) {
-        // iOS
         heading = event.webkitCompassHeading;
       } else if (event.alpha !== null) {
-        // Android
         heading = 360 - event.alpha;
       }
 
       heading = (heading + 360) % 360;
       headingDisplay.textContent = `Cap : ${heading.toFixed(0)}°`;
     }
+
+    // GPS access
+    gpsBtn.addEventListener('click', () => {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            latitude = pos.coords.latitude;
+            longitude = pos.coords.longitude;
+            gpsInfo.textContent = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`;
+          },
+          (err) => {
+            alert("Erreur GPS : " + err.message);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      } else {
+        alert("La géolocalisation n'est pas disponible sur ce navigateur.");
+      }
+    });
   </script>
 </body>
 </html>
