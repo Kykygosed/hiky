@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Navigation Display - Capteurs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      overflow: hidden;
+      height: 100vh;
+      font-family: sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #permissionBtn {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #444;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    #headingDisplay {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="permissionBtn">Autoriser les capteurs</button>
+  <div id="headingDisplay">Cap: 0°</div>
+  <canvas id="ndCanvas" width="600" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById('ndCanvas');
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height;
+    const radius = 280;
+    let heading = 0;
+
+    const headingDisplay = document.getElementById('headingDisplay');
+
+    function drawND(heading) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Arc du radar (demi-cercle)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Avion (point jaune en bas)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 10, 0, 2 * Math.PI);
+      ctx.fillStyle = "yellow";
+      ctx.fill();
+
+      // Rose des caps rotative
+      const ticks = 36; // tous les 10°
+      const step = 360 / ticks;
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(-heading * Math.PI / 180); // rotation inverse pour donner l'illusion que l'avion tourne
+
+      for (let i = 0; i < ticks; i++) {
+        const angle = i * step * Math.PI / 180;
+        const x1 = radius * Math.cos(angle);
+        const y1 = -radius * Math.sin(angle);
+        const x2 = (radius - 10) * Math.cos(angle);
+        const y2 = -(radius - 10) * Math.sin(angle);
+
+        // Traits
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Labels tous les 30°
+        if (i % 3 === 0) {
+          const labelAngle = i * step;
+          let label = labelAngle.toFixed(0);
+          if (labelAngle === 0) label = "N";
+          else if (labelAngle === 90) label = "E";
+          else if (labelAngle === 180) label = "S";
+          else if (labelAngle === 270) label = "W";
+
+          const tx = (radius - 25) * Math.cos(angle);
+          const ty = -(radius - 25) * Math.sin(angle);
+
+          ctx.fillStyle = "white";
+          ctx.font = "bold 14px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, tx, ty);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function animate() {
+      drawND(heading);
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    // Bouton d'autorisation capteurs
+    const permissionBtn = document.getElementById('permissionBtn');
+
+    permissionBtn.addEventListener('click', () => {
+      if (
+        typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function'
+      ) {
+        // iOS - demande de permission
+        DeviceOrientationEvent.requestPermission()
+          .then((state) => {
+            if (state === 'granted') {
+              startListening();
+              permissionBtn.style.display = 'none';
+            } else {
+              alert('Permission refusée.');
+            }
+          })
+          .catch((err) => {
+            console.error('Erreur dans la demande de permission', err);
+          });
+      } else {
+        // Android / navigateurs qui n'ont pas besoin de permission
+        startListening();
+        permissionBtn.style.display = 'none';
+      }
+    });
+
+    function startListening() {
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      window.addEventListener('deviceorientation', handleOrientation, true);
+    }
+
+    function handleOrientation(event) {
+      if (event.webkitCompassHeading !== undefined) {
+        // iOS
+        heading = event.webkitCompassHeading;
+      } else if (event.alpha !== null) {
+        // Android
+        heading = 360 - event.alpha;
+      }
+
+      heading = (heading + 360) % 360;
+      headingDisplay.textContent = `Cap : ${heading.toFixed(0)}°`;
+    }
+  </script>
+</body>
+</html>
