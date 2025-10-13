@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Waypoints & Flight Plan</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+    #map {
+      width: 100%;
+      height: 90%;
+    }
+    #controls {
+      height: 10%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+  <div id="controls">
+    <button id="btnFlightPlan">FLT PLAN</button>
+    <button id="btnClear">Clear FLT-PLAN</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script>
+    // --- Configuration Firebase (remplace par ton config) ---
+    const firebaseConfig = {
+      apiKey: "TON_API_KEY",
+      authDomain: "TON_DOMAINE.firebaseapp.com",
+      databaseURL: "https://TON_DOMAINE-default-rtdb.firebaseio.com",
+      projectId: "TON_PROJECT_ID",
+      storageBucket: "TON_DOMAINE.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // --- Variables globales ---
+    let map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // stocker les markers de waypoints
+    const wpMarkers = {};
+    let flightPlan = [];  // liste d’ids de waypoint dans l’ordre
+
+    let modeFlightPlan = false;
+
+    const btnFlightPlan = document.getElementById('btnFlightPlan');
+    const btnClear = document.getElementById('btnClear');
+
+    btnFlightPlan.onclick = () => {
+      modeFlightPlan = !modeFlightPlan;
+      btnFlightPlan.textContent = modeFlightPlan ? "Mode FLT PLAN ON" : "FLT PLAN";
+    };
+
+    btnClear.onclick = () => {
+      // Effacer plan de vol côté Firebase
+      db.ref('FLT-PLAN').remove()
+        .catch(err => console.error("Erreur clear FLT-PLAN:", err));
+      // Effacer localement
+      flightPlan = [];
+      redrawFlightLines();
+    };
+
+    // Fonction pour redessiner les lignes du plan de vol
+    function redrawFlightLines() {
+      // enlever les lignes existantes
+      if (window._flightLines) {
+        window._flightLines.forEach(line => map.removeLayer(line));
+      }
+      window._flightLines = [];
+
+      for (let i = 0; i < flightPlan.length - 1; i++) {
+        const idA = flightPlan[i];
+        const idB = flightPlan[i+1];
+        const mA = wpMarkers[idA];
+        const mB = wpMarkers[idB];
+        if (mA && mB) {
+          const latlngs = [ mA.getLatLng(), mB.getLatLng() ];
+          const poly = L.polyline(latlngs, { color: 'blue' }).addTo(map);
+          window._flightLines.push(poly);
+        }
+      }
+    }
+
+    // Charger les waypoints déjà stockés
+    db.ref('WPT').on('value', snapshot => {
+      const wpts = snapshot.val() || {};
+      // Pour chaque waypoint dans la base
+      Object.entries(wpts).forEach(([wptId, wptData]) => {
+        if (!(wptId in wpMarkers)) {
+          const m = L.marker([wptData.lat, wptData.lng]).addTo(map);
+          m.bindPopup(`<b>${wptData.name}</b>`);
+          m.wptId = wptId;
+          m.on('click', onWaypointClicked);
+          wpMarkers[wptId] = m;
+        }
+      });
+    });
+
+    // Charger le plan de vol existant
+    db.ref('FLT-PLAN').on('value', snapshot => {
+      const plan = snapshot.val() || {};
+      // plan stocké comme { "WPT1": wptId1, "WPT2": wptId2, ... }
+      const sorted = Object.entries(plan)
+        .sort((a,b) => a[0].localeCompare(b[0]))
+        .map(pair => pair[1]);
+      flightPlan = sorted;
+      redrawFlightLines();
+    });
+
+    // Lors d’un click sur la carte : création de nouveau waypoint
+    map.on('click', e => {
+      const { lat, lng } = e.latlng;
+      const name = prompt("Nouveau waypoint – nom :");
+      if (!name) return;
+
+      // On vérifie qu’il n'y ait pas de doublon de nom
+      // On lit la liste actuelle
+      db.ref('WPT').once('value').then(snapshot => {
+        const wpts = snapshot.val() || {};
+        const exists = Object.values(wpts).some(w => w.name === name);
+        if (exists) {
+          alert("Ce nom de waypoint existe déjà !");
+          return;
+        }
+        // Créer un nouvel id (ex : auto key)
+        const newRef = db.ref('WPT').push();
+        newRef.set({
+          name,
+          lat,
+          lng
+        });
+      });
+    });
+
+    // Quand on clique sur un waypoint marker
+    function onWaypointClicked(e) {
+      const marker = this;
+      const wptId = marker.wptId;
+      if (modeFlightPlan) {
+        // On ajoute au plan de vol si pas déjà là
+        if (!flightPlan.includes(wptId)) {
+          const nextIndex = flightPlan.length + 1;
+          const key = 'WPT' + nextIndex;
+          db.ref('FLT-PLAN/' + key).set(wptId).catch(err => console.error(err));
+        }
+      }
+    }
+
+  </script>
+</body>
+</html>
