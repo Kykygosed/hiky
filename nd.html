@@ -1,89 +1,156 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>ND avec GPS et Vrai Nord</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>ND avec GPS, Cap et Waypoints Firebase + Zoom</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      background: black;
-      overflow: hidden;
-      height: 100vh;
+      margin: 0; padding: 0; height: 100vh; background: black; overflow: hidden;
       font-family: sans-serif;
+      -webkit-user-select:none; -webkit-touch-callout:none; /* disable selection on mobile */
     }
-
     canvas {
       display: block;
+      margin: auto;
+      background: black;
+      touch-action: none; /* important for pinch zoom */
     }
-
-    .btn {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #444;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      font-size: 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      z-index: 10;
-    }
-
-    #permissionBtn { top: 20px; }
-    #gpsBtn { top: 70px; }
-
     #headingDisplay {
       position: absolute;
-      bottom: 20px;
-      left: 50%;
+      bottom: 20px; left: 50%;
       transform: translateX(-50%);
       color: white;
       font-size: 20px;
       font-weight: bold;
       text-align: center;
+      user-select:none;
     }
-
     #gpsInfo {
       position: absolute;
-      bottom: 80px;
-      left: 50%;
+      bottom: 60px; left: 50%;
       transform: translateX(-50%);
       color: white;
       font-size: 14px;
       text-align: center;
+      user-select:none;
+    }
+    #zoomInfo {
+      position: absolute;
+      bottom: 100px; left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 14px;
+      text-align: center;
+      user-select:none;
     }
   </style>
 </head>
 <body>
 
-  <button id="permissionBtn" class="btn">Autoriser les capteurs</button>
-  <button id="gpsBtn" class="btn">Demander position GPS</button>
-
+  <canvas id="ndCanvas" width="600" height="600"></canvas>
   <div id="gpsInfo">Lat: —, Lon: —</div>
   <div id="headingDisplay">Cap : 0°</div>
+  <div id="zoomInfo">Zoom: 5 NM</div>
 
-  <canvas id="ndCanvas" width="600" height="600"></canvas>
-
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script>
+    // --- Config Firebase ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAamXzsUBdA4KWdbpfEk1JtP1L5ENLh1Pc",
+      authDomain: "plen-95d55.firebaseapp.com",
+      databaseURL: "https://plen-95d55-default-rtdb.firebaseio.com",
+      projectId: "plen-95d55",
+      storageBucket: "plen-95d55.firebasestorage.app",
+      messagingSenderId: "147249259769",
+      appId: "1:147249259769:web:ee8e5952a96f244f776e28",
+      measurementId: "G-ZDLRGQR5NC"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     const canvas = document.getElementById('ndCanvas');
     const ctx = canvas.getContext('2d');
     const centerX = canvas.width / 2;
     const centerY = canvas.height;
     const radius = 280;
-    let heading = 0;
+
+    let heading = 0; // en degrés, 0 = nord
     let latitude = null;
     let longitude = null;
+    let waypoints = []; // {id, lat, lng, name}
+
+    // Zoom en Nautical Miles (Nm)
+    let zoomNm = 5; // par défaut 5 Nm (tu pourras zoomer de 1 à 20)
 
     const headingDisplay = document.getElementById('headingDisplay');
     const gpsInfo = document.getElementById('gpsInfo');
+    const zoomInfo = document.getElementById('zoomInfo');
 
-    function drawND(heading) {
+    // Fonctions utilitaires
+
+    // Conversion degrés -> radians
+    function deg2rad(deg) {
+      return deg * Math.PI / 180;
+    }
+    // Conversion radians -> degrés
+    function rad2deg(rad) {
+      return rad * 180 / Math.PI;
+    }
+
+    // Calcul distance entre deux lat,lng en Nm (nautical miles)
+    // Utilise formule haversine
+    function distanceNm(lat1, lon1, lat2, lon2) {
+      const R = 3440.065; // rayon terre en Nm
+      const dLat = deg2rad(lat2 - lat1);
+      const dLon = deg2rad(lon2 - lon1);
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // Calcul azimut (angle en degrés) du point B par rapport à A (0=Nord)
+    function azimut(lat1, lon1, lat2, lon2) {
+      const dLon = deg2rad(lon2 - lon1);
+      const y = Math.sin(dLon) * Math.cos(deg2rad(lat2));
+      const x = Math.cos(deg2rad(lat1)) * Math.sin(deg2rad(lat2)) -
+                Math.sin(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(dLon);
+      let brng = Math.atan2(y, x);
+      brng = rad2deg(brng);
+      return (brng + 360) % 360;
+    }
+
+    // Projection d’un waypoint sur le demi-cercle ND
+    // angleRelatif : différence entre heading et azimut vers waypoint (en degrés)
+    // distance : distance en Nm
+    // zoomNm : distance max visible (rayon)
+    function projectOnND(angleRelatif, distance) {
+      // On map le rayon proportionnel à distance (max zoomNm => radius)
+      const r = Math.min(distance / zoomNm, 1) * radius;
+      // angleRelatif 0 = centre (Nord) sur demi-cercle (de PI à 2PI)
+      // ici 0° sur le ND = au centre bas (12h), donc angle canvas = PI + angleRelatif (en radians)
+      // angleRelatif est positif vers la droite, négatif vers la gauche
+
+      // On limite le demi-cercle à -90° à +90° (soit ± PI/2)
+      if (angleRelatif > 90) angleRelatif = 90;
+      else if (angleRelatif < -90) angleRelatif = -90;
+
+      const angleRad = Math.PI + deg2rad(angleRelatif);
+
+      const x = centerX + r * Math.cos(angleRad);
+      const y = centerY + r * Math.sin(angleRad);
+
+      return {x, y};
+    }
+
+    // Dessiner ND
+    function drawND() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Arc du radar (demi-cercle)
+      // Demi-cercle radar
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
       ctx.strokeStyle = "white";
@@ -135,79 +202,156 @@
           ctx.fillText(label, tx, ty);
         }
       }
-
       ctx.restore();
+
+      // Afficher waypoints devant
+      drawWaypoints();
+
     }
 
-    function animate() {
-      drawND(heading);
-      requestAnimationFrame(animate);
-    }
+    // Dessiner waypoints filtrés et trajectoire courbe
+    function drawWaypoints() {
+      if (latitude === null || longitude === null) return;
+      if (waypoints.length === 0) return;
 
-    animate();
+      // Filtrer waypoints devant (angle relatif < 45°)
+      const visibleWpts = waypoints
+        .map(wpt => {
+          const dist = distanceNm(latitude, longitude, wpt.lat, wpt.lng);
+          const bearing = azimut(latitude, longitude, wpt.lat, wpt.lng);
+          let angleRel = bearing - heading;
+          if (angleRel > 180) angleRel -= 360;
+          else if (angleRel < -180) angleRel += 360;
+          return {...wpt, dist, angleRel};
+        })
+        .filter(wpt => Math.abs(wpt.angleRel) <= 45 && wpt.dist <= zoomNm)
+        .sort((a,b) => a.dist - b.dist); // ordre distance
 
-    const permissionBtn = document.getElementById('permissionBtn');
-    const gpsBtn = document.getElementById('gpsBtn');
+      // On projette les waypoints sur le canvas
+      const points = visibleWpts.map(wpt => {
+        return {...wpt, ...projectOnND(wpt.angleRel, wpt.dist)};
+      });
 
-    permissionBtn.addEventListener('click', () => {
-      if (
-        typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function'
-      ) {
-        DeviceOrientationEvent.requestPermission()
-          .then((state) => {
-            if (state === 'granted') {
-              startOrientation();
-              permissionBtn.style.display = 'none';
-            } else {
-              alert('Permission refusée.');
-            }
-          })
-          .catch(console.error);
-      } else {
-        startOrientation();
-        permissionBtn.style.display = 'none';
+      // Tracer trajectoire fluide en bleu
+      if (points.length > 1) {
+        ctx.strokeStyle = 'cyan';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+
+        for (let i = 1; i < points.length; i++) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          // Point de contrôle milieu entre prev et curr, décalé un peu pour courber
+          const cpX = (prev.x + curr.x) / 2;
+          const cpY = (prev.y + curr.y) / 2 - 20; // -20 pour courber vers le haut
+          ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
+        }
+        ctx.stroke();
       }
-    });
 
-    function startOrientation() {
-      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-      window.addEventListener('deviceorientation', handleOrientation, true);
+      // Dessiner les points et labels
+      points.forEach(wpt => {
+        // Point WPT
+        ctx.beginPath();
+        ctx.arc(wpt.x, wpt.y, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = 'orange';
+        ctx.fill();
+
+        // Label nom
+        ctx.fillStyle = 'white';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(wpt.name, wpt.x, wpt.y - 10);
+
+        // Distance
+        ctx.fillStyle = 'cyan';
+        ctx.font = '12px monospace';
+        ctx.fillText(wpt.dist.toFixed(1) + " NM", wpt.x, wpt.y + 18);
+      });
     }
 
-    function handleOrientation(event) {
-      if (event.webkitCompassHeading !== undefined) {
-        heading = event.webkitCompassHeading;
-      } else if (event.alpha !== null) {
-        heading = 360 - event.alpha;
-      }
-
-      heading = (heading + 360) % 360;
-      headingDisplay.textContent = `Cap : ${heading.toFixed(0)}°`;
+    // Gestion zoom souris / tactile
+    function handleWheel(event) {
+      event.preventDefault();
+      const delta = event.deltaY || event.wheelDelta;
+      if (delta > 0) zoomNm = Math.min(20, zoomNm + 1);
+      else zoomNm = Math.max(1, zoomNm - 1);
+      zoomInfo.textContent = `Zoom: ${zoomNm} NM`;
+      drawND();
     }
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
 
-    // GPS access
-    gpsBtn.addEventListener('click', () => {
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            latitude = pos.coords.latitude;
-            longitude = pos.coords.longitude;
-            gpsInfo.textContent = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`;
-          },
-          (err) => {
-            alert("Erreur GPS : " + err.message);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
+    // Pinch zoom pour mobile (simple)
+    let lastDistance = null;
+    canvas.addEventListener('touchmove', event => {
+      if (event.touches.length === 2) {
+        event.preventDefault();
+        const dx = event.touches[0].clientX - event.touches[1].clientX;
+        const dy = event.touches[0].clientY - event.touches[1].clientY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (lastDistance !== null) {
+          if (dist > lastDistance + 5) {
+            zoomNm = Math.max(1, zoomNm - 1);
+          } else if (dist < lastDistance - 5) {
+            zoomNm = Math.min(20, zoomNm + 1);
           }
-        );
-      } else {
-        alert("La géolocalisation n'est pas disponible sur ce navigateur.");
+          zoomInfo.textContent = `Zoom: ${zoomNm} NM`;
+          drawND();
+        }
+        lastDistance = dist;
       }
     });
+    canvas.addEventListener('touchend', event => {
+      if (event.touches.length < 2) lastDistance = null;
+    });
+
+    // Mise à jour du heading depuis DeviceOrientation (alpha)
+    window.addEventListener('deviceorientationabsolute', e => {
+      if (e.absolute && e.alpha !== null) {
+        heading = (360 - e.alpha) % 360;
+        headingDisplay.textContent = `Cap : ${heading.toFixed(0)}°`;
+        drawND();
+      }
+    });
+
+    // Pour desktop fallback (simulation heading avec clavier gauche/droite)
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') heading = (heading + 5) % 360;
+      else if (e.key === 'ArrowRight') heading = (heading - 5 + 360) % 360;
+      headingDisplay.textContent = `Cap : ${heading.toFixed(0)}°`;
+      drawND();
+    });
+
+    // Récupération GPS (géolocalisation)
+    function updatePosition(position) {
+      latitude = position.coords.latitude;
+      longitude = position.coords.longitude;
+      gpsInfo.textContent = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`;
+      drawND();
+    }
+    navigator.geolocation.watchPosition(updatePosition, e => {
+      gpsInfo.textContent = 'GPS non disponible';
+    }, { enableHighAccuracy: true, maximumAge: 1000 });
+
+    // Charger waypoints depuis Firebase (WPT)
+    function loadWaypoints() {
+      db.ref('WPT').on('value', snapshot => {
+        const data = snapshot.val() || {};
+        waypoints = Object.entries(data).map(([id, wpt]) => ({
+          id,
+          lat: wpt.lat,
+          lng: wpt.lng,
+          name: wpt.name
+        }));
+        drawND();
+      });
+    }
+    loadWaypoints();
+
+    // Initial draw
+    drawND();
+
   </script>
 </body>
 </html>
