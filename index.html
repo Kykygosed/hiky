@@ -233,13 +233,17 @@
     } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
     // --- REPLACE with your Firebase config ---
-    const firebaseConfig = {
-      apiKey: "REPLACE_API_KEY",
-      authDomain: "REPLACE_AUTH_DOMAIN",
-      projectId: "REPLACE_PROJECT_ID",
-      appId: "REPLACE_APP_ID",
-      // messagingSenderId, measurementId... add if needed
-    };
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyAamXzsUBdA4KWdbpfEk1JtP1L5ENLh1Pc",
+  authDomain: "plen-95d55.firebaseapp.com",
+  databaseURL: "https://plen-95d55-default-rtdb.firebaseio.com",
+  projectId: "plen-95d55",
+  storageBucket: "plen-95d55.firebasestorage.app",
+  messagingSenderId: "147249259769",
+  appId: "1:147249259769:web:ee8e5952a96f244f776e28",
+  measurementId: "G-ZDLRGQR5NC"
+};
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
