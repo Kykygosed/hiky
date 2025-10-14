@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="theme-color" content="#4f46e5" />
+<title>PWA Salut</title>
+<link rel="manifest" href="/manifest.json" />
+<style>
+body {
+height: 100vh;
+margin: 0;
+display: flex;
+justify-content: center;
+align-items: center;
+background: #0f172a;
+color: #ffffff;
+font-family: Arial, sans-serif;
+flex-direction: column;
+}
+h1 {
+font-size: 3rem;
+margin: 0;
+}
+</style>
+</head>
+<body>
+<h1>Salut ! 👋</h1>
+<script>
+if ('serviceWorker' in navigator) {
+navigator.serviceWorker.register('/sw.js').then(() => {
+console.log('Service worker enregistré');
+}).catch(err => {
+console.error('Erreur SW', err);
+});
+}
+</script>
+</body>
+</html>
