@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ATC Control</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; width: 100%; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getDatabase, ref, set, push, get } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAamXzsUBdA4KWdbpfEk1JtP1L5ENLh1Pc",
+      authDomain: "plen-95d55.firebaseapp.com",
+      databaseURL: "https://plen-95d55-default-rtdb.firebaseio.com",
+      projectId: "plen-95d55",
+      storageBucket: "plen-95d55.firebasestorage.app",
+      messagingSenderId: "147249259769",
+      appId: "1:147249259769:web:ee8e5952a96f244f776e28",
+      measurementId: "G-ZDLRGQR5NC"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth();
+    const db = getDatabase(app);
+
+    signInAnonymously(auth);
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        set(ref(db, "accounts/" + user.uid + "/controller"), true);
+      }
+    });
+
+    const map = L.map('map').setView([48.8566, 2.3522], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    map.on('click', async e => {
+      const name = prompt("Nom de la tour ?");
+      if (!name) return;
+
+      const freq = await generateUniqueFreq();
+      const towerRef = push(ref(db, "towers"));
+      set(towerRef, {
+        name: name,
+        freq: freq,
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+        atis: ""
+      });
+    });
+
+    async function generateUniqueFreq() {
+      const min = 110000;
+      const max = 134999;
+      const snap = await get(ref(db, "towers"));
+      const used = new Set();
+      if (snap.exists()) {
+        Object.values(snap.val()).forEach(t => used.add(t.freq));
+      }
+      let freq;
+      do {
+        freq = (Math.floor(Math.random() * (max - min + 1)) + min) / 1000;
+        freq = freq.toFixed(3);
+      } while (used.has(freq));
+      return freq;
+    }
+  </script>
+</body>
+</html>
