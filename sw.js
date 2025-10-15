@@ -22,6 +22,6 @@ if (key !== CACHE_NAME) return caches.delete(key);
 
 self.addEventListener('fetch', (event) => {
 event.respondWith(
-fetch(event.request).catch(() => caches.match(event.request).then(r => r || caches.match('/offline.html')))
+fetch(event.request).catch(() => caches.match(event.request).then(r => r || caches.match('./offline.html')))
 );
 });
