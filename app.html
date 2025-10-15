@@ -130,21 +130,25 @@
   const atisField = document.getElementById('atisField');
   const hoverLabel = document.getElementById('hoverLabel');
 
-  // Auth
-  onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      currentUser = user;
-      const uref = doc(db, "accounts", user.uid);
-      const snap = await getDoc(uref);
-      if (!snap.exists()) {
-        await setDoc(uref, { controller: false });
-      }
-      isController = (await getDoc(uref)).data().controller === true;
-      listenTowers();
-    } else {
-      signInAnonymously(auth);
+// Auth
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    currentUser = user;
+    const uref = doc(db, "accounts", user.uid);
+    const snap = await getDoc(uref);
+    // ✅ Création auto si l'utilisateur n'existe pas encore
+    if (!snap.exists()) {
+      await setDoc(uref, { controller: false });
     }
-  });
+    const data = (await getDoc(uref)).data();
+    isController = data.controller === true;
+
+    listenTowers();
+  } else {
+    signInAnonymously(auth);
+  }
+});
+
 
   // 🔸 Écoute en temps réel des tours
   function listenTowers() {
