@@ -1,1 +1,262 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Radar ATC</title>
+  <meta name="theme-color" content="#111">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+    .leaflet-container {
+      background: #1a1a1a;
+    }
 
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      right: -300px;
+      width: 300px;
+      height: 100%;
+      background: #222;
+      padding: 16px;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+      transition: right 0.3s;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .sidebar.active {
+      right: 0;
+    }
+    .sidebar h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .sidebar .freq {
+      color: #00bfff;
+      font-weight: bold;
+    }
+    .sidebar textarea {
+      flex: 1;
+      background: #333;
+      border: none;
+      padding: 8px;
+      color: white;
+      resize: none;
+    }
+    .sidebar button {
+      padding: 10px;
+      background: #00bfff;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    /* Tooltip nom tour */
+    #hoverLabel {
+      position: fixed;
+      pointer-events: none;
+      background: rgba(0,0,0,0.7);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="sidebar" id="sidebar">
+    <h2 id="towerName">---</h2>
+    <div class="freq" id="towerFreq"></div>
+    <textarea id="atisField" placeholder="ATIS..."></textarea>
+    <button id="saveAtis">💾 Enregistrer ATIS</button>
+  </div>
+  <div id="hoverLabel"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import { getFirestore, doc, setDoc, getDoc, updateDoc, addDoc, collection, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAamXzsUBdA4KWdbpfEk1JtP1L5ENLh1Pc",
+    authDomain: "plen-95d55.firebaseapp.com",
+    databaseURL: "https://plen-95d55-default-rtdb.firebaseio.com",
+    projectId: "plen-95d55",
+    storageBucket: "plen-95d55.firebasestorage.app",
+    messagingSenderId: "147249259769",
+    appId: "1:147249259769:web:ee8e5952a96f244f776e28",
+    measurementId: "G-ZDLRGQR5NC"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  let currentUser = null;
+  let isController = false;
+  let selectedTower = null;
+
+  // Init map
+  const map = L.map('map', {
+    center: [48.8566, 2.3522],
+    zoom: 6,
+    zoomControl: true
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19
+  }).addTo(map);
+
+  const towers = new Map(); // stockage local des tours
+  const sidebar = document.getElementById('sidebar');
+  const towerNameEl = document.getElementById('towerName');
+  const towerFreqEl = document.getElementById('towerFreq');
+  const atisField = document.getElementById('atisField');
+  const hoverLabel = document.getElementById('hoverLabel');
+
+  // Auth
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      currentUser = user;
+      const uref = doc(db, "accounts", user.uid);
+      const snap = await getDoc(uref);
+      if (!snap.exists()) {
+        await setDoc(uref, { controller: false });
+      }
+      isController = (await getDoc(uref)).data().controller === true;
+      listenTowers();
+    } else {
+      signInAnonymously(auth);
+    }
+  });
+
+  // 🔸 Écoute en temps réel des tours
+  function listenTowers() {
+    const colRef = collection(db, "towers");
+    onSnapshot(colRef, (snapshot) => {
+      snapshot.docChanges().forEach(change => {
+        const data = change.doc.data();
+        const id = change.doc.id;
+
+        if (change.type === "added" || change.type === "modified") {
+          addOrUpdateTower(id, data);
+        }
+        if (change.type === "removed") {
+          removeTower(id);
+        }
+      });
+    });
+  }
+
+  // 📡 Ajouter ou mettre à jour une tour sur la carte
+  function addOrUpdateTower(id, data) {
+    if (towers.has(id)) {
+      const t = towers.get(id);
+      t.marker.setLatLng([data.lat, data.lng]);
+      t.circle.setLatLng([data.lat, data.lng]);
+      t.data = data;
+    } else {
+      const marker = L.circleMarker([data.lat, data.lng], {
+        radius: 6,
+        color: '#00bfff',
+        fillColor: '#00bfff',
+        fillOpacity: 1
+      }).addTo(map);
+
+      const circle = L.circle([data.lat, data.lng], {
+        radius: 22224, // 12 NM ≈ 22.224 km
+        color: '#00bfff',
+        fillColor: '#00bfff',
+        fillOpacity: 0.15
+      }).addTo(map);
+
+      marker.on('mouseover', (e) => {
+        hoverLabel.style.display = 'block';
+        hoverLabel.textContent = data.name;
+      });
+      marker.on('mouseout', () => hoverLabel.style.display = 'none');
+      marker.on('mousemove', (e) => {
+        hoverLabel.style.top = (e.originalEvent.clientY + 10) + 'px';
+        hoverLabel.style.left = (e.originalEvent.clientX + 10) + 'px';
+      });
+      marker.on('click', () => openSidebar(id, data));
+
+      towers.set(id, { marker, circle, data });
+    }
+  }
+
+  function removeTower(id) {
+    if (towers.has(id)) {
+      const t = towers.get(id);
+      map.removeLayer(t.marker);
+      map.removeLayer(t.circle);
+      towers.delete(id);
+    }
+  }
+
+  // 🧭 Sidebar
+  function openSidebar(id, data) {
+    selectedTower = id;
+    towerNameEl.textContent = data.name;
+    towerFreqEl.textContent = `${data.freq.toFixed(3)} MHz`;
+    atisField.value = data.atis || '';
+    sidebar.classList.add('active');
+  }
+
+  document.getElementById('saveAtis').addEventListener('click', async () => {
+    if (!selectedTower) return;
+    const atis = atisField.value.trim();
+    await updateDoc(doc(db, "towers", selectedTower), { atis });
+  });
+
+  // ➕ Ajout tour (contrôleur)
+  map.on('click', async (e) => {
+    if (!isController) return;
+    const name = prompt("Nom de la tour :");
+    if (!name) return;
+
+    const freq = await generateUniqueFreq();
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+
+    await addDoc(collection(db, "towers"), {
+      name, lat, lng,
+      freq,
+      atis: "",
+      createdBy: currentUser.uid
+    });
+  });
+
+  async function generateUniqueFreq() {
+    const usedFreqs = new Set();
+    const snap = await getDocs(collection(db, "towers"));
+    snap.forEach(d => usedFreqs.add(d.data().freq));
+
+    let freq;
+    do {
+      freq = (Math.random() * (134.999 - 110.000) + 110.000);
+      freq = Math.round(freq * 1000) / 1000;
+    } while (usedFreqs.has(freq));
+    return freq;
+  }
+
+</script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</body>
+</html>
