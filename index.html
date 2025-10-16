@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Connexion — Kyky</title>
+  <title>Connexion — KykyProject</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6d28d9">
   <style>
@@ -314,7 +314,7 @@ const firebaseConfig = {
       if(!isValidEmail(email)){ showMessage('Email invalide'); return; }
       if(password.length < 6){ showMessage('Le mot de passe doit contenir au moins 6 caractères'); return; }
       signupBtn.disabled = true;
-      signupBtn.textContent = 'Création...';
+      signupBtn.textContent = 'Enregistrement...';
       try{
         await createUserWithEmailAndPassword(auth, email, password);
         showMessage('Compte créé — vous êtes connecté', 'ok');
