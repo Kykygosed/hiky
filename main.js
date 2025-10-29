@@ -2,17 +2,18 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.m
 import { PointerLockControls } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/controls/PointerLockControls.js';
 import { WORLD } from './world.js';
 
+// === INITIALISATION DE BASE ===
 const canvas = document.getElementById('c');
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x87ceeb, 0.0025);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio ? window.devicePixelRatio : 1);
+renderer.setPixelRatio(window.devicePixelRatio || 1);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-// lumières
+// === LUMIÈRES ===
 const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
 hemi.position.set(0, 200, 0);
 scene.add(hemi);
@@ -20,12 +21,12 @@ const dir = new THREE.DirectionalLight(0xffffff, 0.8);
 dir.position.set(-100, 100, -50);
 scene.add(dir);
 
-// sol grid helper
+// === GRILLE AU SOL ===
 let grid = new THREE.GridHelper(64, 64, 0x000000, 0x888888);
 grid.position.y = 0.01;
 scene.add(grid);
 
-// matériaux rapides
+// === MATÉRIAUX ===
 const mats = {
   grass: new THREE.MeshLambertMaterial({ color: 0x55a630 }),
   dirt: new THREE.MeshLambertMaterial({ color: 0x8b5a2b }),
@@ -34,7 +35,7 @@ const mats = {
   stone: new THREE.MeshLambertMaterial({ color: 0x808080 })
 };
 
-// Instanced rendering pour performances
+// === GÉNÉRATION DU MONDE ===
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
 const instanced = new Map();
 
@@ -48,7 +49,9 @@ function buildInstanced() {
   for (const type in buckets) {
     const arr = buckets[type];
     const mesh = new THREE.InstancedMesh(cubeGeo, mats[type] || mats.stone, arr.length);
-    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
     const dummy = new THREE.Object3D();
     for (let i = 0; i < arr.length; i++) {
       const b = arr[i];
@@ -56,6 +59,7 @@ function buildInstanced() {
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
+
     instanced.set(type, mesh);
     scene.add(mesh);
   }
@@ -63,13 +67,15 @@ function buildInstanced() {
 
 buildInstanced();
 
-// player / controls
+// === CONTRÔLES / JOUEUR ===
 const controls = new PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
+
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let canJump = false;
 
-// mouvement clavier
+// === GESTION CLAVIER ===
 const move = { forward: false, backward: false, left: false, right: false };
 
 function onKeyDown(event) {
@@ -104,14 +110,17 @@ function onKeyUp(event) {
   }
 }
 
+// Écouteurs clavier (doivent venir APRÈS les définitions)
 document.addEventListener('keydown', onKeyDown);
 document.addEventListener('keyup', onKeyUp);
 
+// === INITIALISATION DU JOUEUR ===
 controls.getObject().position.set(0, 2, 5);
-scene.add(controls.getObject());
 
-document.body.addEventListener('click', () => { controls.lock(); });
+// Click pour activer la caméra
+document.body.addEventListener('click', () => controls.lock());
 
+// === ANIMATION ===
 const clock = new THREE.Clock();
 
 function animate() {
@@ -120,7 +129,7 @@ function animate() {
 
   velocity.x -= velocity.x * 10.0 * delta;
   velocity.z -= velocity.z * 10.0 * delta;
-  velocity.y -= 9.8 * 5.0 * delta;
+  velocity.y -= 9.8 * 5.0 * delta; // gravité
 
   direction.z = Number(move.forward) - Number(move.backward);
   direction.x = Number(move.right) - Number(move.left);
@@ -134,6 +143,7 @@ function animate() {
   controls.moveForward(-velocity.z * delta);
   controls.getObject().position.y += velocity.y * delta;
 
+  // Collision simple au sol
   if (controls.getObject().position.y < 2) {
     velocity.y = 0;
     controls.getObject().position.y = 2;
@@ -145,6 +155,7 @@ function animate() {
 
 animate();
 
+// === ÉVÉNEMENTS SUPPLÉMENTAIRES ===
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
