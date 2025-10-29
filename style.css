@@ -1,0 +1,12 @@
+body,html{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial}
+#c{display:block;width:100%;height:100vh;background:#87ceeb}
+#hud{position:fixed;left:12px;top:12px;color:#fff;z-index:10}
+#info{background:rgba(0,0,0,0.5);padding:8px;border-radius:6px;margin-bottom:8px}
+#gui{background:rgba(0,0,0,0.35);padding:8px;border-radius:6px}
+#gui label{display:block;margin:4px 0;font-size:14px;color:#fff}
+input[type=range]{vertical-align:middle}
+
+
+/* small mobile tweak */
+@media(max-width:600px){#hud{left:8px;right:8px}}
+
