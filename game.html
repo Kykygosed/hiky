@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini Minecraft - Three.js</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="hud">
+<div id="info">Cliquez pour prendre le contrôle. WASD = déplacement, SPACE = sauter</div>
+<div id="gui">
+<label><input id="toggle-grid" type="checkbox" checked> Afficher la grille</label>
+<label><input id="toggle-wire" type="checkbox"> Mode fil de fer</label>
+<label>Distance chargée: <input id="render-distance" type="range" min="8" max="64" value="32"></label>
+</div>
+</div>
+
+
+<canvas id="c"></canvas>
+
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
