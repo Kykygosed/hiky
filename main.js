@@ -3,6 +3,7 @@ import { PointerLockControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/
 import { WORLD } from './world.js';
 
 
+
 // === INITIALISATION DE BASE ===
 const canvas = document.getElementById('c');
 const scene = new THREE.Scene();
