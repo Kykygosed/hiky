@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Radio WebRTC — KykyChat</title>
+  <!-- Google font for a digital look -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0b0f14;--panel:#0f1720;--accent:#ffd400;--muted:#8891a0;--green:#28a745}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071023 0%,#0b1220 100%);color:#e6eef7;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,'Noto Sans',sans-serif}
+    .app{display:flex;flex-direction:column;height:100vh;padding:18px;gap:12px}
+    .top{display:flex;gap:12px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border:1px solid rgba(255,255,255,0.04);padding:14px;border-radius:12px;flex:1;min-height:140px;position:relative}
+    .label{position:absolute;left:12px;top:12px;background:var(--accent);color:#061019;padding:6px 10px;font-weight:700;border-radius:6px;font-size:12px}
+    .freq-big{font-family:'Orbitron',monospace;font-size:44px;font-weight:700;color:#0b3b0f;background:linear-gradient(180deg,#3df28a,#0fb85f);display:inline-block;padding:8px 16px;border-radius:8px}
+    .title{color:var(--muted);font-size:13px;margin-bottom:6px}
+    .swap-wrap{display:flex;align-items:center;justify-content:center;width:72px}
+    .swap-btn{background:transparent;border:2px dashed rgba(255,255,255,0.06);padding:8px;border-radius:10px;cursor:pointer}
+    .bottom{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;display:flex;gap:8px;align-items:center}
+    .freq-list{display:flex;gap:8px;overflow:auto;padding:6px}
+    .freq-item{min-width:120px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer;border:1px solid rgba(255,255,255,0.03)}
+    .blinking{animation:blink 1s linear infinite}
+    @keyframes blink{0%{box-shadow:0 0 0 0 rgba(255,212,0,0.0)}50%{box-shadow:0 0 12px 4px rgba(255,212,0,0.12)}100%{box-shadow:0 0 0 0 rgba(255,212,0,0)}}
+    .ptt{margin-top:12px;padding:10px;border-radius:8px;background:linear-gradient(180deg,#15202b,#0e1a24);border:1px solid rgba(255,255,255,0.04);display:inline-flex;gap:8px;align-items:center}
+    .ptt button{padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
+    .ptt button.on{background:var(--green);color:#03110a}
+    .ptt button.locked{background:#8b8b8b;color:#eee;cursor:not-allowed}
+    .controls{display:flex;flex-direction:column;gap:8px}
+    .meta{font-size:13px;color:var(--muted)}
+    .call-sign{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .triangle{width:0;height:0;border-left:28px solid transparent;border-right:28px solid transparent;border-bottom:46px solid #0fb85f;display:inline-block;vertical-align:middle;margin-left:12px}
+    .triangle span{display:block;text-align:center;margin-top:6px;font-family:'Orbitron',monospace;color:#07220a}
+    .small{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="controls">
+      <label class="meta">Callsign</label>
+      <input id="callsign" class="call-sign" placeholder="Entrez votre callsign (ex: F-ABCD)" />
+    </div>
+
+    <div class="top">
+      <div class="card" id="activeCard">
+        <div class="label">ACTIVE</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div>
+            <div class="title">Fréquence active</div>
+            <div class="freq-big" id="activeFreq">123.456</div>
+          </div>
+          <div class="triangle" title="status">
+            <span id="triangleLabel">123.456</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="swap-wrap">
+        <button id="swapBtn" class="swap-btn">⇄</button>
+      </div>
+
+      <div class="card" id="standbyCard">
+        <div class="label" style="background:transparent;color:var(--muted);left:auto;right:12px">STANDBY</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <div class="title">Fréquence standby</div>
+          <div class="freq-big" id="standbyFreq">123.000</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="ptt">
+        <div>
+          <div class="small">Push-To-Talk</div>
+          <div class="meta">Appuie pour parler — se verrouille si quelqu'un parle</div>
+        </div>
+        <div style="margin-left:auto">
+          <button id="pttBtn">PTT</button>
+        </div>
+      </div>
+
+      <div class="meta">Statut WebRTC: <span id="webrtcStatus">stopped</span></div>
+    </div>
+
+    <div class="bottom">
+      <div class="meta">Fréquences disponibles (cliquez pour définir en STANDBY)</div>
+      <div class="freq-list" id="freqList">
+        <!-- populated from Firebase -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (compat for simpler code) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    // --- CONFIGURATION FOURNIE PAR L'UTILISATEUR ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.firebasestorage.app",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+
+    // --- INITIALISATION ---
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // UI elements
+    const activeFreqEl = document.getElementById('activeFreq');
+    const standbyFreqEl = document.getElementById('standbyFreq');
+    const triangleLabel = document.getElementById('triangleLabel');
+    const freqListEl = document.getElementById('freqList');
+    const swapBtn = document.getElementById('swapBtn');
+    const pttBtn = document.getElementById('pttBtn');
+    const webrtcStatus = document.getElementById('webrtcStatus');
+    const activeCard = document.getElementById('activeCard');
+    const standbyCard = document.getElementById('standbyCard');
+    const callsignInput = document.getElementById('callsign');
+
+    // state
+    let clientId = 'c_' + Math.random().toString(36).substr(2,9);
+    let localStream = null;
+    let pcMap = {}; // peerId -> RTCPeerConnection
+    let joinedFreq = null; // active freq channel
+    let standbyFreq = '123.000';
+    standbyFreqEl.textContent = standbyFreq;
+    let speakingRef = null;
+    let speaking = false;
+    let someoneSpeaking = false;
+
+    // audio context for speaking detection
+    let audioContext, analyser, meterInterval;
+
+    // Helpers
+    function nmBetween(lat1,lon1,lat2,lon2){
+      // haversine distance in nautical miles
+      function toRad(d){return d*Math.PI/180}
+      const Rkm = 6371;
+      const dLat = toRad(lat2-lat1);
+      const dLon = toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2);
+      const c = 2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+      const km = Rkm*c;
+      const nm = km/1.852;
+      return nm;
+    }
+
+    // Load frequencies from Firebase: expects /frequencies/{id} objects with keys:
+    // { frequency: 122.500, range: 50, lat: 49.0128, lon: 2.55 }
+    // NOTE: lat/lon are required for range filtering. If missing, the frequency is shown but disabled.
+    function loadFrequencies(){
+      const ref = db.ref('frequencies');
+      ref.on('value', snapshot=>{
+        freqListEl.innerHTML='';
+        const data = snapshot.val() || {};
+        Object.entries(data).forEach(([key,val])=>{
+          const el = document.createElement('div');
+          el.className='freq-item';
+          el.dataset.key = key;
+          el.dataset.freq = val.frequency;
+          el.innerHTML = `<div style="font-weight:700">${key}</div><div class="small">${val.frequency} MHz • range ${val.range||'n/a'} nm</div>`;
+
+          // compute distance to user if geolocation available
+          el.onclick = async ()=>{
+            // set standby freq
+            standbyFreq = String(val.frequency).padEnd(6,'0');
+            standbyFreqEl.textContent = standbyFreq;
+            // blinking effect
+            standbyCard.classList.add('blinking');
+            setTimeout(()=>standbyCard.classList.remove('blinking'),3000);
+          };
+
+          freqListEl.appendChild(el);
+        })
+      })
+    }
+
+    // Swap active and standby
+    swapBtn.addEventListener('click', ()=>{
+      const a = activeFreqEl.textContent;
+      const b = standbyFreqEl.textContent;
+      activeFreqEl.textContent = b;
+      triangleLabel.textContent = b;
+      standbyFreqEl.textContent = a;
+
+      // leave old channel, join new
+      leaveChannel(joinedFreq).then(()=>{
+        joinChannel(b);
+      });
+    });
+
+    // PTT logic
+    let pttLocked = false;
+    pttBtn.addEventListener('click', async ()=>{
+      if(pttLocked) return;
+      if(!localStream) await startLocalAudio();
+      // toggle mute/unmute
+      const micTrack = localStream.getAudioTracks()[0];
+      if(!micTrack) return;
+      micTrack.enabled = !micTrack.enabled;
+      pttBtn.className = micTrack.enabled ? 'on' : '';
+      pttBtn.textContent = micTrack.enabled ? 'PARLER' : 'MUTE';
+      // update DB speaking flag if unmuted
+      setSpeaking(micTrack.enabled);
+    });
+
+    // set speaking flag in firebase so others know someone is talking
+    function setSpeaking(val){
+      if(!joinedFreq) return;
+      const callsign = callsignInput.value || clientId;
+      const path = `channels/${joinedFreq}/speaking/${clientId}`;
+      db.ref(path).set(val ? {ts:Date.now(),callsign} : null);
+    }
+
+    // watch speaking flags to lock PTT when someone else speaks
+    function watchSpeaking(freq){
+      if(speakingRef) speakingRef.off();
+      someoneSpeaking = false;
+      speakingRef = db.ref(`channels/${freq}/speaking`);
+      speakingRef.on('value', snap=>{
+        const data = snap.val() || {};
+        // if any entry besides ours is true -> lock
+        someoneSpeaking = Object.keys(data).some(k=>k!==clientId && data[k]);
+        updatePttLock();
+      })
+    }
+
+    function updatePttLock(){
+      const micTrack = localStream && localStream.getAudioTracks()[0];
+      if(someoneSpeaking){
+        pttLocked = true;
+        pttBtn.classList.add('locked');
+        pttBtn.textContent = 'LOCKED';
+        if(micTrack) micTrack.enabled = false;
+      } else {
+        pttLocked = false;
+        pttBtn.classList.remove('locked');
+        pttBtn.textContent = (micTrack && micTrack.enabled) ? 'PARLER' : 'PTT';
+      }
+    }
+
+    // --- WebRTC signaling using Firebase Realtime Database ---
+    // Simple pairwise mesh via /channels/{freq}/peers
+    async function joinChannel(freq){
+      if(!freq) return;
+      joinedFreq = freq;
+      webrtcStatus.textContent = 'joining '+freq;
+      // register presence
+      const peersRef = db.ref(`channels/${freq}/peers/${clientId}`);
+      peersRef.set({ts:Date.now(),callsign:callsignInput.value||clientId});
+      peersRef.onDisconnect().remove();
+
+      // listen for other peers
+      db.ref(`channels/${freq}/peers`).on('value', snapshot=>{
+        const peers = snapshot.val() || {};
+        Object.keys(peers).forEach(peerId=>{
+          if(peerId===clientId) return;
+          if(!pcMap[peerId]) {
+            // start connection to peer
+            createPeerConnection(peerId, freq, true);
+          }
+        })
+      });
+
+      // listening for offers to us
+      db.ref(`channels/${freq}/offers`).on('child_added', async snap=>{
+        const offer = snap.val();
+        const offerId = snap.key; // format: from_to -> we will derive
+        if(!offer || offer.to !== clientId) return;
+        const from = offer.from;
+        if(pcMap[from]) return; // already have
+        await createPeerConnection(from, freq, false, offer.sdp, snap.ref);
+      });
+
+      // watch speaking
+      watchSpeaking(freq);
+
+      // start local audio capture
+      await startLocalAudio();
+
+      webrtcStatus.textContent = 'joined '+freq;
+    }
+
+    async function leaveChannel(freq){
+      if(!freq) return;
+      webrtcStatus.textContent = 'leaving '+freq;
+      try{ db.ref(`channels/${freq}/peers/${clientId}`).remove(); }catch(e){}
+      // cleanup pcs
+      Object.values(pcMap).forEach(pc=>pc.close && pc.close()); pcMap = {};
+      joinedFreq = null;
+      webrtcStatus.textContent = 'left';
+      if(speakingRef) { speakingRef.off(); speakingRef = null; }
+    }
+
+    async function createPeerConnection(peerId, freq, initiator, remoteSdp=null, offerRef=null){
+      const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      pcMap[peerId] = pc;
+
+      // add local tracks
+      if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+
+      // when remote track arrives, play it
+      pc.ontrack = (ev)=>{
+        const audio = document.getElementById('audio_'+peerId) || document.createElement('audio');
+        audio.id = 'audio_'+peerId;
+        audio.autoplay = true;
+        audio.srcObject = ev.streams[0];
+        document.body.appendChild(audio);
+      }
+
+      // ICE candidates -> push to firebase
+      pc.onicecandidate = (e)=>{
+        if(!e.candidate) return;
+        const path = `channels/${freq}/candidates/${clientId}_to_${peerId}`;
+        db.ref(path).push(e.candidate.toJSON());
+      }
+
+      // listen for remote ICE candidates
+      const candRef = db.ref(`channels/${freq}/candidates/${peerId}_to_${clientId}`);
+      candRef.on('child_added', snap=>{
+        const cand = snap.val();
+        if(cand) pc.addIceCandidate(new RTCIceCandidate(cand)).catch(()=>{});
+      });
+
+      if(initiator){
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        // write offer to db
+        const oref = db.ref(`channels/${freq}/offers`).push();
+        await oref.set({from:clientId,to:peerId,sdp:offer.sdp,type:offer.type,ts:Date.now()});
+
+        // wait for answer
+        db.ref(`channels/${freq}/answers/${oref.key}`).on('value', snap=>{
+          const ans = snap.val();
+          if(ans && ans.to===clientId){
+            pc.setRemoteDescription({type:ans.type,sdp:ans.sdp}).catch(()=>{});
+          }
+        });
+      } else {
+        // received remoteSdp -> set remote and create answer
+        await pc.setRemoteDescription({type:'offer',sdp:remoteSdp});
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        // write answer into path answers/{offerRef.key}
+        const ansPath = `channels/${freq}/answers/${offerRef.key}`;
+        db.ref(ansPath).set({from:clientId,to:remoteSdp ? offerRef.key : peerId,sdp:answer.sdp,type:answer.type,ts:Date.now()});
+      }
+
+      pc.onconnectionstatechange = ()=>{
+        if(pc.connectionState==='failed' || pc.connectionState==='disconnected'){
+          pc.close(); delete pcMap[peerId];
+        }
+      }
+    }
+
+    // start capturing microphone and setup speaking detection
+    async function startLocalAudio(){
+      if(localStream) return localStream;
+      try{
+        localStream = await navigator.mediaDevices.getUserMedia({audio:true});
+        // create audio context analyser for speaking detection
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(localStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        function check(){
+          analyser.getByteFrequencyData(data);
+          let values = 0; for(let i=0;i<data.length;i++) values += data[i];
+          let average = values / data.length;
+          const isSpeaking = average > 20; // threshold — tweakable
+          if(isSpeaking !== speaking){
+            speaking = isSpeaking;
+            setSpeaking(speaking);
+          }
+        }
+        meterInterval = setInterval(check,150);
+
+        // if already joined freq, add tracks to existing pcs
+        Object.values(pcMap).forEach(pc=>{
+          localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+        });
+        return localStream;
+      }catch(e){
+        console.warn('Microphone access denied',e);
+      }
+    }
+
+    // basic UI: set initial active freq and join
+    activeFreqEl.textContent = '123.456';
+    triangleLabel.textContent = '123.456';
+    joinChannel('123.456');
+
+    // load frequencies list
+    loadFrequencies();
+
+    // watch DB for someone speaking and update lock
+    setInterval(()=>{
+      updatePttLock();
+    },250);
+
+    // cleanup on unload
+    window.addEventListener('beforeunload', ()=>{
+      leaveChannel(joinedFreq);
+    });
+
+    // NOTE: This is a demonstrator/prototype. Production notes:
+    // - Signaling via Realtime Database is simple but not ideal for many peers (scale concerns).
+    // - For robust NAT traversal/scale, add TURN servers and/or an SFU.
+    // - Frequency objects in Firebase should contain latitude/longitude to enable range filtering:
+    //    frequencies/LFPG_TWR : { frequency:122.500, range:50, lat:49.012779, lon:2.55 }
+    // - The speaking detection threshold is naive and may need tuning per device.
+  </script>
+</body>
+</html>
