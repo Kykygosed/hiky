@@ -1,86 +1,156 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ATC Control</title>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    crossorigin=""
-  />
-  <style>
-    html, body { height: 100%; margin: 0; }
-    #map { height: 100%; width: 100%; cursor: crosshair; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ATC Controller Station</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  body{margin:0;background:#0b0f14;color:#e6eef7;font-family:system-ui}
+  #setup{position:absolute;inset:0;background:#0b0f14;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;padding:20px}
+  #main{display:none;height:100vh;overflow:hidden}
+  #map{height:100%;width:100%}
+  input,button{padding:10px 14px;border-radius:8px;border:1px solid #333;background:#111;color:#eee;font-size:15px}
+  button{cursor:pointer;background:#222}
+  #ptt{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:16px 26px;font-size:20px;font-weight:700;background:#1a1a1a;border:2px solid #444;border-radius:14px;z-index:9999}
+  #ptt.on{background:#28a745;color:#03110a}
+  #ptt.locked{background:#555;color:#ccc;cursor:not-allowed}
+</style>
 </head>
 <body>
+<div id="setup">
+  <h2>Configurer votre tour</h2>
+  <input id="towerName" placeholder="Nom de la tour (ex: LFPG_TWR)" />
+  <input id="freq" placeholder="Fréquence (ex: 122.500)" />
+  <input id="rangeNm" placeholder="Range (Nm) ex: 50" />
+  <button id="startBtn">Enregistrer et démarrer</button>
+</div>
+
+<div id="main">
   <div id="map"></div>
+  <button id="ptt">PTT</button>
+</div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getDatabase, ref, set, push, get } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.firebasestorage.app",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyAamXzsUBdA4KWdbpfEk1JtP1L5ENLh1Pc",
-      authDomain: "plen-95d55.firebaseapp.com",
-      databaseURL: "https://plen-95d55-default-rtdb.firebaseio.com",
-      projectId: "plen-95d55",
-      storageBucket: "plen-95d55.firebasestorage.app",
-      messagingSenderId: "147249259769",
-      appId: "1:147249259769:web:ee8e5952a96f244f776e28",
-      measurementId: "G-ZDLRGQR5NC"
-    };
+const setup = document.getElementById("setup");
+const main = document.getElementById("main");
+const startBtn = document.getElementById("startBtn");
+const pttBtn = document.getElementById("ptt");
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth();
-    const db = getDatabase(app);
+let towerName, freq, rangeNm;
+let clientId = 'c_'+Math.random().toString(36).substr(2,9);
+let map, circle;
+let localStream = null;
+let joinedFreq = null;
+let speakingRef = null;
+let speaking = false;
+let someoneSpeaking = false;
 
-    signInAnonymously(auth);
-    onAuthStateChanged(auth, user => {
-      if (user) {
-        set(ref(db, "accounts/" + user.uid + "/controller"), true);
-      }
-    });
+startBtn.onclick = () => {
+  towerName = document.getElementById("towerName").value;
+  freq = document.getElementById("freq").value;
+  rangeNm = parseFloat(document.getElementById("rangeNm").value);
+  if(!towerName||!freq||!rangeNm) return alert("Remplis tout");
 
-    const map = L.map('map').setView([48.8566, 2.3522], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '© OpenStreetMap'
+  setup.style.display="none";
+  main.style.display="block";
+
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+
+    map = L.map('map', {
+      zoomControl:true,
+      attributionControl:false
+    }).setView([lat, lon], 10);
+
+    const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+      maxZoom:18
     }).addTo(map);
 
-    map.on('click', async e => {
-      const name = prompt("Nom de la tour ?");
-      if (!name) return;
+    const radiusMeters = rangeNm * 1852;
+    circle = L.circle([lat, lon], {
+      radius: radiusMeters,
+      color:'#444',
+      fillColor:'#111',
+      fillOpacity:0.2
+    }).addTo(map);
 
-      const freq = await generateUniqueFreq();
-      const towerRef = push(ref(db, "towers"));
-      set(towerRef, {
-        name: name,
-        freq: freq,
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
-        atis: ""
-      });
-    });
+    registerFrequency(lat,lon);
+    joinChannel(freq);
+  });
+};
 
-    async function generateUniqueFreq() {
-      const min = 110000;
-      const max = 134999;
-      const snap = await get(ref(db, "towers"));
-      const used = new Set();
-      if (snap.exists()) {
-        Object.values(snap.val()).forEach(t => used.add(t.freq));
-      }
-      let freq;
-      do {
-        freq = (Math.floor(Math.random() * (max - min + 1)) + min) / 1000;
-        freq = freq.toFixed(3);
-      } while (used.has(freq));
-      return freq;
-    }
-  </script>
+function registerFrequency(lat,lon){
+  const ref = db.ref('frequencies/'+towerName);
+  ref.set({ frequency:parseFloat(freq), range:rangeNm, lat, lon });
+}
+
+pttBtn.onclick = async ()=>{
+  if(someoneSpeaking) return;
+  if(!localStream) await startLocalAudio();
+  const mic = localStream.getAudioTracks()[0];
+  mic.enabled = !mic.enabled;
+  pttBtn.className = mic.enabled ? 'on' : '';
+  pttBtn.textContent = mic.enabled ? 'PARLER' : 'PTT';
+  setSpeaking(mic.enabled);
+};
+
+function setSpeaking(val){
+  if(!joinedFreq) return;
+  const path = `channels/${joinedFreq}/speaking/${clientId}`;
+  db.ref(path).set(val ? {ts:Date.now(), tower:towerName} : null);
+}
+
+function watchSpeaking(freq){
+  if(speakingRef) speakingRef.off();
+  speakingRef = db.ref(`channels/${freq}/speaking`);
+  speakingRef.on('value', snap=>{
+    const data = snap.val()||{};
+    someoneSpeaking = Object.keys(data).some(k=>k!==clientId);
+    updatePTT();
+  });
+}
+
+function updatePTT(){
+  if(someoneSpeaking){
+    pttBtn.classList.add('locked');
+    pttBtn.textContent='LOCKED';
+    const mic = localStream?.getAudioTracks?.()[0];
+    if(mic) mic.enabled=false;
+  } else {
+    pttBtn.classList.remove('locked');
+    pttBtn.textContent='PTT';
+  }
+}
+
+async function startLocalAudio(){
+  localStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  return localStream;
+}
+
+async function joinChannel(f){
+  joinedFreq=f;
+  const peersRef = db.ref(`channels/${f}/peers/${clientId}`);
+  peersRef.set({ts:Date.now(),tower:towerName});
+  peersRef.onDisconnect().remove();
+  watchSpeaking(f);
+}
+</script>
 </body>
 </html>
