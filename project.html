@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KykyProject – Éditeur Collaboratif</title>
+<style>
+:root {
+  --purple: #6d28d9;
+  --purple-600: #7c3aed;
+  --bg: #f5f3ff;
+  --muted: #6b7280;
+  --active: #facc15;
+}
+body {
+  margin:0;
+  font-family:Inter,sans-serif;
+  background:var(--bg);
+}
+header {
+  background:white;
+  padding:12px 20px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.08);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  position:sticky;
+  top:0;
+  z-index:10;
+}
+header button, header input[type=color], header input[type=number], header input[type=text]{
+  padding:6px 10px;
+  border-radius:6px;
+  border:1px solid #ddd;
+  cursor:pointer;
+}
+header button {
+  background:linear-gradient(90deg,var(--purple),var(--purple-600));
+  color:white;
+  border:none;
+}
+header button.active {
+  background: var(--active);
+  color: black;
+}
+#editor {
+  background:white;
+  margin:20px auto;
+  padding:20px;
+  max-width:900px;
+  min-height:500px;
+  border-radius:10px;
+  box-shadow:0 2px 14px rgba(0,0,0,0.05);
+  overflow-y:auto;
+}
+#users-online{
+  margin-left:auto;
+  display:flex;
+  gap:5px;
+}
+.user-badge{
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:white;
+  font-size:12px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <button data-cmd="bold"><b>B</b></button>
+  <button data-cmd="italic"><i>I</i></button>
+  <button data-cmd="underline"><u>U</u></button>
+  <button data-cmd="strikeThrough"><s>S</s></button>
+  <input type="number" id="font-size-input" placeholder="Taille px" min="1" max="72">
+  <input type="color" id="color-input" title="Couleur">
+  <button data-cmd="justifyLeft">G</button>
+  <button data-cmd="justifyCenter">C</button>
+  <button data-cmd="justifyRight">D</button>
+  <input type="text" id="search-collab" placeholder="Chercher collaborateur...">
+  <div id="users-online"></div>
+</header>
+
+<div id="editor" contenteditable="true"></div>
+
+<div id="chat">
+  <div id="chat-messages"></div>
+  <input type="text" id="chat-input" placeholder="Message..." onkeydown="if(event.key==='Enter')sendMessage()">
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js";
+import { getDatabase, ref, get, set, onValue, push } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.appspot.com",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+let UID = null;
+let userName = null;
+let userColor = null;
+let currentProject = null;
+const editor = document.getElementById("editor");
+const usersOnlineDiv = document.getElementById("users-online");
+const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+let activeFormats = { bold: false, italic: false, underline: false, strikeThrough: false };
+
+function getRandomColor() {
+  return '#'+Math.floor(Math.random()*16777215).toString(16);
+}
+
+onAuthStateChanged(auth, user => {
+  if(!user) return window.location.href="index.html";
+  UID=user.uid;
+  userName=user.displayName||"Utilisateur";
+  userColor=getRandomColor();
+  initEditor();
+});
+
+function updateActiveButtons() {
+  document.querySelectorAll('header button[data-cmd]').forEach(btn => {
+    const cmd = btn.dataset.cmd;
+    if(activeFormats[cmd]) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+}
+
+/* Command buttons */
+document.querySelectorAll('header button[data-cmd]').forEach(btn => {
+  btn.addEventListener('click', ()=>{
+    const cmd = btn.dataset.cmd;
+    activeFormats[cmd] = !activeFormats[cmd];
+    updateActiveButtons();
+    editor.focus();
+    applyActiveFormats();
+  });
+});
+
+/* Apply formats wherever typing */
+editor.addEventListener('input', applyActiveFormats);
+
+function applyActiveFormats() {
+  const sel = window.getSelection();
+  if(!sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const span = document.createElement('span');
+  span.appendChild(range.extractContents());
+
+  if(activeFormats.bold) span.style.fontWeight='bold';
+  if(activeFormats.italic) span.style.fontStyle='italic';
+  if(activeFormats.underline) span.style.textDecoration='underline';
+  if(activeFormats.strikeThrough) span.style.textDecoration = (span.style.textDecoration?' '+span.style.textDecoration:'') + 'line-through';
+
+  // Font size
+  const size = document.getElementById('font-size-input').value;
+  if(size) span.style.fontSize = size+'px';
+
+  // Font color
+  const color = document.getElementById('color-input').value;
+  if(color) span.style.color = color;
+
+  range.insertNode(span);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/* Font size input */
+document.getElementById("font-size-input").addEventListener("change", applyActiveFormats);
+document.getElementById("color-input").addEventListener("change", applyActiveFormats);
+
+/* Firebase & Editor Initialization */
+async function initEditor() {
+  const nowRef=ref(db,"users/"+UID+"/nowediting");
+  const snap=await get(nowRef);
+  if(!snap.exists()) return alert("Aucun projet en cours");
+  currentProject=snap.val();
+  const projectRef=ref(db,"users/"+UID+"/files/"+currentProject);
+
+  // Load content
+  const projectSnap=await get(projectRef);
+  if(projectSnap.exists()) editor.innerHTML=projectSnap.val().content||"";
+
+  // Save real time
+  editor.addEventListener("input", ()=>{set(projectRef,{content:editor.innerHTML});});
+
+  // Listen for remote changes
+  onValue(projectRef, snapshot=>{
+    if(!snapshot.exists()) return;
+    const val=snapshot.val();
+    if(val.content!==editor.innerHTML) editor.innerHTML=val.content;
+  });
+
+  // Add user to online
+  const userRef=ref(db,"users/"+UID+"/online");
+  set(userRef,{name:userName,color:userColor});
+  onValue(ref(db,"users/"+UID+"/online"), snap=> {
+    usersOnlineDiv.innerHTML="";
+    const users = snap.val();
+    if(users) Object.values(users).forEach(u => {
+      const div=document.createElement("div");
+      div.className="user-badge";
+      div.style.background=u.color;
+      div.title=u.name;
+      div.textContent=u.name[0];
+      usersOnlineDiv.appendChild(div);
+    });
+  });
+
+  // Chat listener
+  onValue(ref(db,"users/"+UID+"/chat"),snap=>{
+    chatMessages.innerHTML="";
+    snap.forEach(s=>{
+      const m=s.val();
+      const div=document.createElement("div");
+      div.textContent=`${m.user}: ${m.msg}`;
+      chatMessages.appendChild(div);
+    });
+    chatMessages.scrollTop=chatMessages.scrollHeight;
+  });
+}
+
+/* Chat */
+function sendMessage(){
+  const msg=chatInput.value.trim();
+  if(!msg) return;
+  const chatRef=ref(db,"users/"+UID+"/chat");
+  push(chatRef,{user:userName,msg});
+  chatInput.value="";
+}
+</script>
+</body>
+</html>
