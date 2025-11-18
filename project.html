@@ -69,6 +69,24 @@ header button.active {
   color:white;
   font-size:12px;
 }
+#collab-results{
+  position:absolute;
+  top:50px;
+  left:20px;
+  background:white;
+  border:1px solid #ccc;
+  border-radius:6px;
+  padding:10px;
+  max-height:200px;
+  overflow-y:auto;
+  display:none;
+  z-index:20;
+}
+.collab-item{
+  padding:5px;
+  cursor:pointer;
+}
+.collab-item:hover{background:#f3f3f3;}
 </style>
 </head>
 <body>
@@ -85,6 +103,7 @@ header button.active {
   <button data-cmd="justifyRight">D</button>
   <input type="text" id="search-collab" placeholder="Chercher collaborateur...">
   <div id="users-online"></div>
+  <div id="collab-results"></div>
 </header>
 
 <div id="editor" contenteditable="true"></div>
@@ -97,7 +116,7 @@ header button.active {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js";
-import { getDatabase, ref, get, set, onValue, push } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+import { getDatabase, ref, get, set, onValue, push, remove, query, orderByChild, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -113,21 +132,23 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
-let UID = null;
-let userName = null;
-let userColor = null;
-let currentProject = null;
+let UID=null;
+let userName=null;
+let userColor=null;
+let currentProject=null;
 const editor = document.getElementById("editor");
 const usersOnlineDiv = document.getElementById("users-online");
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
+const collabInput = document.getElementById("search-collab");
+const collabResults = document.getElementById("collab-results");
+
 let activeFormats = { bold: false, italic: false, underline: false, strikeThrough: false };
 
-function getRandomColor() {
-  return '#'+Math.floor(Math.random()*16777215).toString(16);
-}
+function getRandomColor(){return '#'+Math.floor(Math.random()*16777215).toString(16);}
 
-onAuthStateChanged(auth, user => {
+/* Auth */
+onAuthStateChanged(auth,user=>{
   if(!user) return window.location.href="index.html";
   UID=user.uid;
   userName=user.displayName||"Utilisateur";
@@ -135,59 +156,50 @@ onAuthStateChanged(auth, user => {
   initEditor();
 });
 
-function updateActiveButtons() {
-  document.querySelectorAll('header button[data-cmd]').forEach(btn => {
-    const cmd = btn.dataset.cmd;
-    if(activeFormats[cmd]) btn.classList.add('active');
-    else btn.classList.remove('active');
+function updateActiveButtons(){
+  document.querySelectorAll('header button[data-cmd]').forEach(btn=>{
+    btn.classList.toggle('active', activeFormats[btn.dataset.cmd]);
   });
 }
 
 /* Command buttons */
-document.querySelectorAll('header button[data-cmd]').forEach(btn => {
+document.querySelectorAll('header button[data-cmd]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const cmd = btn.dataset.cmd;
     activeFormats[cmd] = !activeFormats[cmd];
     updateActiveButtons();
     editor.focus();
-    applyActiveFormats();
   });
 });
 
-/* Apply formats wherever typing */
-editor.addEventListener('input', applyActiveFormats);
-
-function applyActiveFormats() {
+/* Apply formatting when typing */
+editor.addEventListener('keypress', e=>{
   const sel = window.getSelection();
   if(!sel.rangeCount) return;
   const range = sel.getRangeAt(0);
+  e.preventDefault();
   const span = document.createElement('span');
-  span.appendChild(range.extractContents());
-
+  span.textContent = e.key;
   if(activeFormats.bold) span.style.fontWeight='bold';
   if(activeFormats.italic) span.style.fontStyle='italic';
   if(activeFormats.underline) span.style.textDecoration='underline';
   if(activeFormats.strikeThrough) span.style.textDecoration = (span.style.textDecoration?' '+span.style.textDecoration:'') + 'line-through';
-
-  // Font size
   const size = document.getElementById('font-size-input').value;
-  if(size) span.style.fontSize = size+'px';
-
-  // Font color
-  const color = document.getElementById('color-input').value;
-  if(color) span.style.color = color;
-
+  if(size) span.style.fontSize=size+'px';
+  const color=document.getElementById('color-input').value;
+  if(color) span.style.color=color;
   range.insertNode(span);
+  range.setStartAfter(span);
   sel.removeAllRanges();
   sel.addRange(range);
-}
+});
 
-/* Font size input */
-document.getElementById("font-size-input").addEventListener("change", applyActiveFormats);
-document.getElementById("color-input").addEventListener("change", applyActiveFormats);
+/* Font size & color changes apply to future typing */
+document.getElementById("font-size-input").addEventListener("change", ()=>editor.focus());
+document.getElementById("color-input").addEventListener("change", ()=>editor.focus());
 
-/* Firebase & Editor Initialization */
-async function initEditor() {
+/* Initialize Firebase editor & listeners */
+async function initEditor(){
   const nowRef=ref(db,"users/"+UID+"/nowediting");
   const snap=await get(nowRef);
   if(!snap.exists()) return alert("Aucun projet en cours");
@@ -199,22 +211,22 @@ async function initEditor() {
   if(projectSnap.exists()) editor.innerHTML=projectSnap.val().content||"";
 
   // Save real time
-  editor.addEventListener("input", ()=>{set(projectRef,{content:editor.innerHTML});});
+  editor.addEventListener("input",()=>{set(projectRef,{content:editor.innerHTML});});
 
   // Listen for remote changes
-  onValue(projectRef, snapshot=>{
+  onValue(projectRef,snapshot=>{
     if(!snapshot.exists()) return;
     const val=snapshot.val();
     if(val.content!==editor.innerHTML) editor.innerHTML=val.content;
   });
 
-  // Add user to online
+  // Online users
   const userRef=ref(db,"users/"+UID+"/online");
   set(userRef,{name:userName,color:userColor});
-  onValue(ref(db,"users/"+UID+"/online"), snap=> {
+  onValue(ref(db,"users/"+UID+"/online"),snap=>{
     usersOnlineDiv.innerHTML="";
-    const users = snap.val();
-    if(users) Object.values(users).forEach(u => {
+    const users=snap.val();
+    if(users) Object.values(users).forEach(u=>{
       const div=document.createElement("div");
       div.className="user-badge";
       div.style.background=u.color;
@@ -245,6 +257,34 @@ function sendMessage(){
   push(chatRef,{user:userName,msg});
   chatInput.value="";
 }
+
+/* Collaborator search */
+collabInput.addEventListener('input', async ()=>{
+  const val=collabInput.value.trim().toLowerCase();
+  if(!val){collabResults.style.display='none'; return;}
+  const usersRef=ref(db,"users");
+  const q=query(usersRef, orderByChild('displayName'), startAt(val), endAt(val+"\uf8ff"));
+  const snap=await get(q);
+  collabResults.innerHTML="";
+  if(snap.exists()){
+    collabResults.style.display='block';
+    snap.forEach(s=>{
+      const u = s.val();
+      if(s.key===UID) return;
+      const div = document.createElement("div");
+      div.className="collab-item";
+      div.textContent=u.displayName || "Utilisateur";
+      div.addEventListener('click', ()=>{
+        const collabRef = ref(db, "users/"+UID+"/collaborators/"+s.key);
+        get(collabRef).then(exists=>{
+          if(exists.exists()) remove(collabRef);
+          else set(collabRef,{name:u.displayName});
+        });
+      });
+      collabResults.appendChild(div);
+    });
+  } else collabResults.style.display='none';
+});
 </script>
 </body>
 </html>
