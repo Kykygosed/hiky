@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KykyProject – Éditeur Collaboratif</title>
+<style>
+:root {
+  --purple: #6d28d9;
+  --purple-600: #7c3aed;
+  --bg: #f5f3ff;
+  --muted: #6b7280;
+}
+body {margin:0;font-family:Inter,sans-serif;background:var(--bg);}
+header {background:white;padding:12px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.08);display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:10;}
+header button,header select,header input[type=color],header input[type=number]{padding:6px 10px;border-radius:6px;border:1px solid #ddd;cursor:pointer;}
+header button{background:linear-gradient(90deg,var(--purple),var(--purple-600));color:white;border:none;}
+#editor{background:white;margin:20px auto;padding:20px;max-width:900px;min-height:500px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,0.05);overflow-y:auto;position:relative;}
+#collab-popup{position:absolute;top:60px;right:20px;width:250px;background:white;border:1px solid #ddd;border-radius:10px;padding:10px;display:none;z-index:20;box-shadow:0 2px 10px rgba(0,0,0,0.2);}
+#collab-popup input, #collab-popup button{width:100%;margin:5px 0;padding:6px;border-radius:6px;border:1px solid #ccc;}
+#chat{position:fixed;top:60px;right:0;width:250px;height:400px;background:white;border-left:1px solid #ddd;display:flex;flex-direction:column;z-index:15;}
+#chat-messages{flex:1;overflow-y:auto;padding:10px;}
+#chat input{border-top:1px solid #ddd;padding:6px;}
+#users-online{margin-left:auto;display:flex;gap:5px;}
+.user-badge{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;}
+.cursor-marker{position:absolute;width:2px;pointer-events:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <button onclick="exec('bold')"><b>B</b></button>
+  <button onclick="exec('italic')"><i>I</i></button>
+  <button onclick="exec('underline')"><u>U</u></button>
+  <button onclick="exec('strikeThrough')"><s>S</s></button>
+  <input type="number" id="font-size-input" placeholder="Taille px" min="1" max="72">
+  <input type="color" onchange="exec('foreColor', this.value)" title="Couleur">
+  <button onclick="exec('justifyLeft')">G</button>
+  <button onclick="exec('justifyCenter')">C</button>
+  <button onclick="exec('justifyRight')">D</button>
+  <button onclick="toggleCollab()">Collaborer</button>
+  <div id="users-online"></div>
+</header>
+
+<div id="editor" contenteditable="true"></div>
+
+<div id="collab-popup">
+  <h4>Ajouter Collaborateur</h4>
+  <input type="text" id="collab-input" placeholder="Nom ou email">
+  <button onclick="addCollaborator()">Ajouter</button>
+  <div id="collab-list"></div>
+</div>
+
+<div id="chat">
+  <div id="chat-messages"></div>
+  <input type="text" id="chat-input" placeholder="Message..." onkeydown="if(event.key==='Enter')sendMessage()">
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js";
+import { getDatabase, ref, get, set, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.appspot.com",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+let UID = null;
+let userName = null;
+let currentProject = null;
+let userColor = null;
+const editor = document.getElementById("editor");
+const collabPopup = document.getElementById("collab-popup");
+const collabList = document.getElementById("collab-list");
+const usersOnlineDiv = document.getElementById("users-online");
+const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+let selection = null;
+
+/* Colors for users */
+function getRandomColor() {
+    const letters = "0123456789ABCDEF";
+    let color = "#";
+    for(let i=0;i<6;i++){color+=letters[Math.floor(Math.random()*16)];}
+    return color;
+}
+
+/* Auth */
+onAuthStateChanged(auth,user=>{
+  if(!user) return window.location.href="index.html";
+  UID=user.uid;
+  userName=user.displayName||"Utilisateur";
+  userColor=getRandomColor();
+  initEditor();
+});
+
+/* Save cursor position for mobile-friendly buttons */
+editor.addEventListener("keyup","mouseup",()=>{ 
+    const sel = window.getSelection();
+    if(sel.rangeCount>0) selection = sel.getRangeAt(0);
+});
+
+/* Topbar commands */
+window.exec=function(cmd,value=null){
+    editor.focus();
+    if(selection){
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(selection);
+    }
+    document.execCommand(cmd,false,value);
+}
+
+/* Font size input */
+document.getElementById("font-size-input").addEventListener("change", e=>{
+    const size = e.target.value;
+    if(!size) return;
+    exec("fontSize", 7);
+    const font = editor.querySelector("font[size='7']");
+    if(font){
+        font.removeAttribute("size");
+        font.style.fontSize = size+"px";
+    }
+});
+
+/* Collaboration popup */
+function toggleCollab(){
+    if(collabPopup.style.display==="block"){
+        collabPopup.style.display="none";
+    } else{
+        collabPopup.style.display="block";
+        document.getElementById("collab-input").focus();
+    }
+}
+function addCollaborator(){
+    const val=document.getElementById("collab-input").value.trim();
+    if(!val) return;
+    const collabRef=ref(db,"users/"+UID+"/collaborators");
+    push(collabRef,{name:val});
+    document.getElementById("collab-input").value="";
+}
+function displayOnlineUsers(users){
+    usersOnlineDiv.innerHTML="";
+    for(let id in users){
+        const div=document.createElement("div");
+        div.className="user-badge";
+        div.style.background=users[id].color;
+        div.title=users[id].name;
+        div.textContent=users[id].name[0];
+        usersOnlineDiv.appendChild(div);
+    }
+}
+
+/* Chat */
+function sendMessage(){
+    const msg=chatInput.value.trim();
+    if(!msg) return;
+    const chatRef=ref(db,"users/"+UID+"/chat");
+    push(chatRef,{user:userName,msg});
+    chatInput.value="";
+}
+
+/* Initialize editor & Firebase listeners */
+async function initEditor(){
+  const nowRef=ref(db,"users/"+UID+"/nowediting");
+  const snap=await get(nowRef);
+  if(!snap.exists()) return alert("Aucun projet en cours");
+  currentProject=snap.val();
+  const projectRef=ref(db,"users/"+UID+"/files/"+currentProject);
+
+  // Load content
+  const projectSnap=await get(projectRef);
+  if(projectSnap.exists()) editor.innerHTML=projectSnap.val().content||"";
+
+  // Save real time
+  editor.addEventListener("input",()=>{set(projectRef,{content:editor.innerHTML});});
+
+  // Listen for remote changes
+  onValue(projectRef,snapshot=>{
+    if(!snapshot.exists()) return;
+    const val=snapshot.val();
+    if(val.content!==editor.innerHTML) editor.innerHTML=val.content;
+  });
+
+  // Add user to online
+  const userRef=ref(db,"users/"+UID+"/online");
+  set(userRef,{name:userName,color:userColor});
+  onValue(ref(db,"users/"+UID+"/online"),snap=>{displayOnlineUsers(snap.val());});
+
+  // Chat listener
+  onValue(ref(db,"users/"+UID+"/chat"),snap=>{
+    chatMessages.innerHTML="";
+    snap.forEach(s=>{
+      const m=s.val();
+      const div=document.createElement("div");
+      div.textContent=`${m.user}: ${m.msg}`;
+      chatMessages.appendChild(div);
+    });
+    chatMessages.scrollTop=chatMessages.scrollHeight;
+  });
+}
+
+/* Cursor markers (simplified) */
+function updateCursors(collabPositions){
+    document.querySelectorAll(".cursor-marker").forEach(el=>el.remove());
+    for(const uid in collabPositions){
+        const { offset, color } = collabPositions[uid];
+        const range = document.createRange();
+        let node = editor.firstChild;
+        let charCount = 0;
+        while(node){
+            if(node.textContent && charCount + node.textContent.length >= offset){
+                const localOffset = offset - charCount;
+                range.setStart(node, localOffset);
+                range.setEnd(node, localOffset);
+                break;
+            }
+            charCount += node.textContent?.length || 0;
+            node = node.nextSibling;
+        }
+        const rect = range.getBoundingClientRect();
+        if(!rect) continue;
+        const cursorDiv = document.createElement("div");
+        cursorDiv.className = "cursor-marker";
+        cursorDiv.style.top = rect.top + window.scrollY + "px";
+        cursorDiv.style.left = rect.left + window.scrollX + "px";
+        cursorDiv.style.height = rect.height + "px";
+        cursorDiv.style.width = "2px";
+        cursorDiv.style.background = `linear-gradient(to bottom, ${color}, transparent 7ch)`;
+        cursorDiv.style.position = "absolute";
+        cursorDiv.style.zIndex = 1000;
+        editor.appendChild(cursorDiv);
+    }
+}
+</script>
+</body>
+</html>
