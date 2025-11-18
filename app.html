@@ -1,144 +1,242 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ATC Map</title>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #1c1c1c;
-      font-family: Arial, sans-serif;
-    }
-    #map {
-      height: 100%;
-      width: 100%;
-    }
-    .sidebar {
-      position: fixed;
-      top: 0;
-      right: -300px;
-      width: 300px;
-      height: 100%;
-      background: #121212;
-      color: white;
-      box-shadow: -2px 0 5px rgba(0,0,0,0.5);
-      transition: right 0.3s;
-      padding: 20px;
-      overflow-y: auto;
-    }
-    .sidebar.active {
-      right: 0;
-    }
-    .close-btn {
-      background: #333;
-      border: none;
-      color: white;
-      padding: 5px 10px;
-      margin-bottom: 10px;
-      cursor: pointer;
-    }
-  </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>KykyProject – Tableau de bord</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#6d28d9" />
+
+    <style>
+        :root {
+            --purple: #6d28d9;
+            --purple-600: #7c3aed;
+            --bg: #f5f3ff;
+            --muted: #6b7280;
+        }
+        body {
+            margin: 0;
+            font-family: Inter, sans-serif;
+            background: var(--bg);
+            padding: 0;
+        }
+
+        header {
+            background: white;
+            padding: 16px 24px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+        }
+
+        .hello {
+            font-weight: 700;
+            font-size: 20px;
+            color: #111827;
+        }
+
+        .btn {
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: linear-gradient(90deg,var(--purple),var(--purple-600));
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .container {
+            padding: 24px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        h2 { margin-bottom: 10px; }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .file {
+            background: white;
+            padding: 14px 18px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .file:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+        }
+
+        #newProjectModal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            padding: 22px;
+            width: 90%;
+            max-width: 380px;
+            border-radius: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            outline: none;
+            font-size: 15px;
+        }
+
+        .close {
+            background: #ddd;
+            color: black;
+            margin-left: 8px;
+        }
+    </style>
 </head>
 <body>
-    <div id="map"></div>
-   <div class="sidebar" id="sidebar">
-      <button class="close-btn" onclick="closeSidebar()">Fermer</button>
-    <h2 id="towerName"></h2>
-    <p>Fréquence : <span id="towerFreq"></span></p>
-    <p>ATIS : <span id="towerAtis"></span></p>
-  </div>
 
+    <header>
+        <div class="hello" id="helloUser">Bonjour</div>
+        <button class="btn" id="openNewProject">Nouveau projet</button>
+    </header>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""></script>
+    <div class="container">
+        <h2>Vos projets</h2>
+        <ul id="projectsList"></ul>
+    </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+    <!-- Nouvelle fenêtre projet -->
+    <div id="newProjectModal">
+        <div class="modal-box">
+            <h3>Nouveau projet</h3>
+            <input id="projectName" placeholder="Nom du projet" />
+            <div style="display:flex;justify-content:flex-end;">
+                <button class="btn" id="createProject">Créer</button>
+                <button class="btn close" id="closeModal">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+    import {
+        getAuth,
+        onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js";
+    import {
+        getDatabase,
+        ref,
+        set,
+        get,
+        onValue
+    } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
 
     const firebaseConfig = {
-      apiKey: "AIzaSyAamXzsUBdA4KWdbpfEk1JtP1L5ENLh1Pc",
-      authDomain: "plen-95d55.firebaseapp.com",
-      databaseURL: "https://plen-95d55-default-rtdb.firebaseio.com",
-      projectId: "plen-95d55",
-      storageBucket: "plen-95d55.firebasestorage.app",
-      messagingSenderId: "147249259769",
-      appId: "1:147249259769:web:ee8e5952a96f244f776e28",
-      measurementId: "G-ZDLRGQR5NC"
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.firebasestorage.app",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth();
+    const auth = getAuth(app);
     const db = getDatabase(app);
 
-    // Auth anonyme + init controller = false si premier login
-    signInAnonymously(auth);
-    onAuthStateChanged(auth, user => {
-      if (user) {
-        const uid = user.uid;
-        const accountRef = ref(db, "accounts/" + uid);
-        get(accountRef).then(snap => {
-          if (!snap.exists()) {
-            set(accountRef, { controller: false });
-          }
+    const helloUser = document.getElementById("helloUser");
+    const projectsList = document.getElementById("projectsList");
+    const newProjectModal = document.getElementById("newProjectModal");
+    const openNewProject = document.getElementById("openNewProject");
+    const closeModal = document.getElementById("closeModal");
+    const createProject = document.getElementById("createProject");
+    const projectName = document.getElementById("projectName");
+
+    let UID = null;
+
+    /* Auth state */
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+            window.location.href = "index.html";
+            return;
+        }
+
+        UID = user.uid;
+
+        /* Load user's name */
+        const snap = await get(ref(db, "users/" + UID));
+        if (snap.exists()) {
+            const d = snap.val();
+            helloUser.textContent = "Bonjour, " + d.firstname + " " + d.lastname;
+        }
+
+        /* Load projects list */
+        onValue(ref(db, "users/" + UID + "/files"), (snapshot) => {
+            projectsList.innerHTML = "";
+            if (!snapshot.exists()) return;
+
+            const files = snapshot.val();
+            Object.keys(files).forEach(name => {
+                const li = document.createElement("li");
+                li.className = "file";
+                li.innerHTML = `
+                    <span>${name}</span>
+                    <span>📄</span>
+                `;
+                li.onclick = () => openProject(name);
+                projectsList.appendChild(li);
+            });
         });
-      }
     });
 
-    // Initialiser Leaflet
-    const map = L.map('map').setView([48.8566, 2.3522], 6); // Paris
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+    /* Create project modal */
+    openNewProject.onclick = () => newProjectModal.style.display = "flex";
+    closeModal.onclick = () => newProjectModal.style.display = "none";
 
-    const sidebar = document.getElementById('sidebar');
-    const towerNameEl = document.getElementById('towerName');
-    const towerFreqEl = document.getElementById('towerFreq');
-    const towerAtisEl = document.getElementById('towerAtis');
+    createProject.onclick = async () => {
+        const name = projectName.value.trim();
+        if (!name) return alert("Nom requis");
 
-    function closeSidebar() {
-      sidebar.classList.remove('active');
+        await set(ref(db, "users/" + UID + "/files/" + name), {
+            created: Date.now(),
+            content: "" // on stockera l'éditeur ici plus tard
+        });
+
+        projectName.value = "";
+        newProjectModal.style.display = "none";
+    };
+
+    /* Open project */
+    async function openProject(name) {
+        await set(ref(db, "users/" + UID + "/nowediting"), name);
+        window.location.href = "project.html";
     }
-    window.closeSidebar = closeSidebar;
 
-    // Récupérer les tours depuis Realtime DB
-    const towersRef = ref(db, "towers");
-    onValue(towersRef, snapshot => {
-      const towers = snapshot.val();
-      if (!towers) return;
-      Object.entries(towers).forEach(([id, tower]) => {
-        addTower(tower);
-      });
-    });
-
-    function addTower(tower) {
-      const marker = L.marker([tower.lat, tower.lng]).addTo(map);
-
-      const circle = L.circle([tower.lat, tower.lng], {
-        radius: 22224, // 12 NM ≈ 22.224 m * 1000
-        color: '#4da6ff',
-        fillColor: '#4da6ff',
-        fillOpacity: 0.2
-      }).addTo(map);
-
-      marker.on('click', () => {
-        towerNameEl.textContent = tower.name;
-        towerFreqEl.textContent = tower.freq;
-        towerAtisEl.textContent = tower.atis || "(Aucun ATIS)";
-        sidebar.classList.add('active');
-      });
+    /* Service worker */
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("sw.js");
     }
-  </script>
+</script>
 </body>
 </html>
