@@ -1,123 +1,370 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Radio Pilot</title>
-<style>
- body{margin:0;background:#666;font-family:system-ui;display:flex;flex-direction:column;align-items:center;padding-top:40px;color:white}
- .radio-box{background:#111;border:6px solid #cfcfcf;border-radius:12px;padding:20px;display:flex;align-items:center;gap:20px}
- .freq-block{color:white;font-size:52px;font-weight:700;font-family:monospace;display:flex;align-items:center}
- .label{font-size:26px;font-style:italic;margin-right:8px;color:#ddd}
- #swap{margin:20px auto;background:#ddd;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:32px;color:#3a5ec0;cursor:pointer}
- #ptt{position:absolute;left:40px;top:180px;background:red;color:white;font-size:22px;font-weight:700;border-radius:50%;width:80px;height:80px;display:flex;align-items:center;justify-content:center;cursor:pointer}
- #freq-list{margin-top:40px;background:#111;border:6px solid #cfcfcf;border-radius:12px;padding:20px;width:360px}
- #freq-list h2{text-align:center;margin:0 0 20px 0;font-style:italic}
- .freq-item{display:flex;justify-content:space-between;font-size:22px;padding:10px 0;border-bottom:2px solid #777;cursor:pointer}
- .freq-item span:first-child{color:#7bd0ff;font-weight:700;font-style:italic}
- .freq-item span:last-child{color:#00ff6a;font-weight:700;font-family:monospace}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Connexion — KykyProject</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6d28d9">
+
+  <style>
+    :root{
+      --purple:#6d28d9;
+      --purple-600:#7c3aed;
+      --bg1: linear-gradient(135deg,#f5f3ff 0%, #fef3c7 100%);
+      --card-bg: rgba(255,255,255,0.9);
+      --glass: rgba(255,255,255,0.55);
+      --muted:#6b7280;
+      --danger:#ef4444;
+      --success:#10b981;
+    }
+    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial;margin:0;padding:0}
+    html,body{height:100%}
+    body{
+      min-height:100vh;
+      background: var(--bg1);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:32px;
+    }
+
+    .wrap{
+      width:100%;
+      max-width:980px;
+      display:grid;
+      grid-template-columns: 1fr 420px;
+      gap:28px;
+      align-items:center;
+    }
+
+    /* LEFT CARD */
+    .hero{
+      border-radius:20px;
+      background:
+        radial-gradient(600px 200px at 10% 10%, rgba(124,58,237,0.08), transparent 8%),
+        linear-gradient(180deg, rgba(124,58,237,0.06), transparent 40%),
+        var(--card-bg);
+      padding:36px;
+      box-shadow: 0 10px 30px rgba(16,24,40,0.08);
+      min-height:420px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:18px;
+    }
+
+    .brand{display:flex;gap:12px;align-items:center;}
+    .logo{
+      width:56px;height:56px;border-radius:12px;
+      background:linear-gradient(135deg,var(--purple),var(--purple-600));
+      display:grid;place-items:center;color:white;font-weight:700;font-size:20px;
+      box-shadow:0 6px 18px rgba(99,102,241,0.18);
+    }
+    h1{font-size:28px;color:#0f172a}
+    .lead{color:var(--muted);max-width:46ch}
+
+    /* RIGHT CARD */
+    .card{
+      border-radius:16px;
+      padding:20px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.85));
+      box-shadow: 0 10px 30px rgba(2,6,23,0.08);
+    }
+
+    .form-title{font-weight:700;font-size:20px;color:#0f172a;margin-bottom:6px}
+    .form-sub{font-size:13px;color:var(--muted);margin-bottom:12px}
+
+    form{display:flex;flex-direction:column;gap:12px}
+    label{font-size:13px;color:#111827}
+    input{
+      width:100%;
+      padding:12px 14px;
+      border-radius:10px;
+      border:1px solid #e6e9ef;
+      background:white;
+      outline:none;
+      font-size:14px;
+    }
+    input:focus{box-shadow:0 4px 14px rgba(99,102,241,0.08);border-color:var(--purple-600)}
+
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:10px 12px;border-radius:10px;border:none;cursor:pointer;font-weight:600;
+      background:linear-gradient(90deg,var(--purple),var(--purple-600));color:white;
+      box-shadow:0 8px 20px rgba(99,102,241,0.18);
+    }
+
+    .btn.ghost{background:transparent;color:var(--purple);border:1px solid rgba(99,102,241,0.12);box-shadow:none}
+    .small{font-size:13px;padding:8px 10px;border-radius:8px}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between}
+
+    .checkbox{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px}
+    .link{font-size:13px;color:var(--purple);text-decoration:none}
+
+    .separator{display:flex;align-items:center;gap:12px;margin:6px 0 12px}
+    .separator .line{height:1px;background:#eef2ff;flex:1;border-radius:2px}
+    .separator span{font-size:13px;color:var(--muted)}
+
+    .msg{padding:10px;border-radius:8px;font-size:13px}
+    .msg.error{background:rgba(239,68,68,0.08);color:var(--danger);border:1px solid rgba(239,68,68,0.12)}
+    .msg.ok{background:rgba(16,185,129,0.06);color:var(--success);border:1px solid rgba(16,185,129,0.12)}
+
+    /* REGISTER MODAL */
+    .modal{
+      position:fixed;inset:0;display:none;
+      background:rgba(0,0,0,0.4);
+      backdrop-filter:blur(4px);
+      align-items:center;justify-content:center;
+      padding:24px;
+    }
+    .modal.active{display:flex;}
+    .modal-box{
+      background:white;
+      width:100%;max-width:420px;
+      padding:20px;border-radius:16px;
+      box-shadow:0 10px 30px rgba(2,6,23,0.2);
+      animation:pop .25s ease;
+    }
+    @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+
+    /* Logged view */
+    #loggedArea{display:none;margin-top:12px}
+    .profile{display:flex;gap:12px;align-items:center;}
+    .avatar{
+      width:56px;height:56px;border-radius:12px;background:#eef2ff;display:grid;place-items:center;
+      color:var(--purple);font-weight:700;font-size:20px;
+    }
+
+    .footer{text-align:center;font-size:13px;color:var(--muted);margin-top:12px}
+
+    /* Responsive */
+    @media(max-width:880px){
+      .wrap{grid-template-columns:1fr}
+      .hero{order:2}
+      .card{order:1;margin-bottom:18px}
+    }
+  </style>
 </head>
+
 <body>
-<div id="ptt">PTT</div>
-<div class="radio-box">
-  <div class="freq-block"><span class="label">ACT</span><span id="activeFreq">123.456</span></div>
-  <div class="freq-block"><span class="label">STBY</span><span id="standbyFreq">123.000</span></div>
-</div>
-<div id="swap">⇄</div>
-<div id="freq-list"><h2>FREQUENCIES</h2><div id="freqContainer"></div></div>
+  <main class="wrap">
+    <section class="hero">
+      <div class="brand">
+        <div class="logo">K</div>
+        <div>
+          <div style="font-weight:700;font-size:16px;color:#0f172a">KykyProject</div>
+          <div style="font-size:13px;color:var(--muted)">Crée. Partage. Inspire.</div>
+        </div>
+      </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-<script>
-const firebaseConfig = {
-  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-  authDomain: "kykychat-24c7f.firebaseapp.com",
-  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-  projectId: "kykychat-24c7f",
-  storageBucket: "kykychat-24c7f.firebasestorage.app",
-  messagingSenderId: "342562811927",
-  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+      <h1>Commence a créer</h1>
+      <p class="lead">En fait c bien tu vois</p>
+    </section>
 
-let callsign = prompt("Votre indicatif ?");
-let clientId = 'p_'+Math.random().toString(36).substr(2,9);
-let activeFreq = 123.456;
-let standbyFreq = 123.000;
-let position = {lat:null, lon:null};
-let heading = null;
+    <section class="card">
+      <div id="messages"></div>
 
-// --- POSITION + HEADING TRACKING ---
-if(navigator.geolocation){
-  navigator.geolocation.watchPosition(pos=>{
-    position.lat = pos.coords.latitude;
-    position.lon = pos.coords.longitude;
-    updatePilotData();
-  });
-}
+      <form id="loginForm">
+        <div class="form-title">Connexion</div>
+        <div class="form-sub">Connecte-toi ou crée un compte</div>
 
-window.addEventListener('deviceorientation', e=>{
-  heading = e.alpha;
-  updatePilotData();
-});
+        <label>Email</label>
+        <input id="loginEmail" type="email" required placeholder="ex: toi@email">
 
-function updatePilotData(){
-  if(!position.lat) return;
-  db.ref('pilots/'+clientId).set({callsign, activeFreq, position, heading});
-}
+        <label>Mot de passe</label>
+        <input id="loginPassword" type="password" required placeholder="•••••••" minlength="6">
 
-// --- UPDATE UI ---
-function renderFreqList(all){
-  const box = document.getElementById('freqContainer');
-  box.innerHTML="";
-  all.forEach(f=>{
-    const d = document.createElement('div');
-    d.className='freq-item';
-    d.innerHTML = `<span>${f.name}</span><span>${f.frequency.toFixed(2)}</span>`;
-    d.onclick=()=>{
-      standbyFreq = f.frequency;
-      document.getElementById('standbyFreq').textContent = standbyFreq.toFixed(3);
+        <div class="row">
+          <label class="checkbox"><input id="remember" type="checkbox"> <span>Se souvenir</span></label>
+          <a class="link" href="#" id="resetLink">Mot de passe oublié ?</a>
+        </div>
+
+        <button class="btn" id="loginBtn">Se connecter</button>
+        <button type="button" class="btn ghost small" id="openRegister">Créer un compte</button>
+      </form>
+
+      <div id="loggedArea">
+        <div class="profile">
+          <div class="avatar" id="avatar">U</div>
+          <div>
+            <div id="displayName" style="font-weight:700;color:#0f172a"></div>
+            <div id="displayEmail" style="color:var(--muted);font-size:13px"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="goApp" class="btn ghost small">Entrer dans Kyky</button>
+          <button id="signOutBtn" class="btn small">Déconnexion</button>
+        </div>
+      </div>
+
+      <div class="footer">Besoin d'aide ? <a class="link" href="#">Contact</a></div>
+    </section>
+  </main>
+
+  <!-- REGISTER MODAL -->
+  <div class="modal" id="registerModal">
+    <div class="modal-box">
+      <h2 style="font-size:20px;margin-bottom:12px;color:#0f172a">Créer un compte</h2>
+      <form id="registerForm">
+        <label>Prénom</label>
+        <input id="regFirstname" type="text" required>
+
+        <label>Nom</label>
+        <input id="regLastname" type="text" required>
+
+        <label>Email</label>
+        <input id="regEmail" type="email" required>
+
+        <label>Mot de passe</label>
+        <input id="regPassword" type="password" minlength="6" required>
+
+        <button class="btn" id="registerBtn">Créer un compte</button>
+        <button type="button" class="btn ghost small" id="closeRegister">Annuler</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- FIREBASE + LOGIC -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      signOut,
+      sendPasswordResetEmail,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js";
+    import {
+      getDatabase,
+      ref,
+      set,
+      get,
+      child
+    } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+
+    /* YOUR FIREBASE CONFIG */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.firebasestorage.app",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
-    box.appendChild(d);
-  });
-}
 
-// --- LOAD NEAR FREQUENCIES ---
-setInterval(async ()=>{
-  if(position.lat===null) return;
-  const snap = await db.ref('frequencies').get();
-  const all = snap.val()||{};
-  const nearby=[];
-  for(const name in all){
-    const f = all[name];
-    const d = distanceNm(position.lat,position.lon,f.lat,f.lon);
-    if(d <= f.range) nearby.push({name,frequency:f.frequency});
-  }
-  renderFreqList(nearby);
-},2000);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
 
-function distanceNm(lat1,lon1,lat2,lon2){
-  const R = 6371e3;
-  const φ1=lat1*Math.PI/180, φ2=lat2*Math.PI/180;
-  const dφ=(lat2-lat1)*Math.PI/180;
-  const dλ=(lon2-lon1)*Math.PI/180;
-  const a=Math.sin(dφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
-  const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-  const meters=R*c;
-  return meters/1852;
-}
+    /* UI Elements */
+    const loginForm = document.getElementById("loginForm");
+    const loginEmail = document.getElementById("loginEmail");
+    const loginPassword = document.getElementById("loginPassword");
+    const loginBtn = document.getElementById("loginBtn");
+    const resetLink = document.getElementById("resetLink");
 
-// --- SWAP ---
-document.getElementById('swap').onclick=()=>{
-  const t=activeFreq;
-  activeFreq=standbyFreq;
-  standbyFreq=t;
-  document.getElementById('activeFreq').textContent=activeFreq.toFixed(3);
-  document.getElementById('standbyFreq').textContent=standbyFreq.toFixed(3);
-  updatePilotData();
-};
-</script>
+    const regModal = document.getElementById("registerModal");
+    const openRegister = document.getElementById("openRegister");
+    const closeRegister = document.getElementById("closeRegister");
+    const registerForm = document.getElementById("registerForm");
+
+    const messages = document.getElementById("messages");
+    const loggedArea = document.getElementById("loggedArea");
+    const avatarEl = document.getElementById("avatar");
+    const displayNameEl = document.getElementById("displayName");
+    const displayEmailEl = document.getElementById("displayEmail");
+
+    const goApp = document.getElementById("goApp");
+    const signOutBtn = document.getElementById("signOutBtn");
+
+    function msg(text, type="error"){
+      messages.innerHTML = `<div class="msg ${type}">${text}</div>`;
+      if(type === "ok") setTimeout(()=> messages.innerHTML="", 3000);
+    }
+
+    /* OPEN REGISTER MODAL */
+    openRegister.onclick = () => regModal.classList.add("active");
+    closeRegister.onclick = () => regModal.classList.remove("active");
+
+    /* LOGIN */
+    loginForm.onsubmit = async(e)=>{
+      e.preventDefault();
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Connexion...";
+      try{
+        const userCred = await signInWithEmailAndPassword(auth, loginEmail.value, loginPassword.value);
+        msg("Connexion réussie ✓", "ok");
+      }catch(err){
+        msg(err.message);
+      }
+      loginBtn.disabled = false;
+      loginBtn.textContent = "Se connecter";
+    };
+
+    /* REGISTER */
+    registerForm.onsubmit = async(e)=>{
+      e.preventDefault();
+      const firstname = regFirstname.value.trim();
+      const lastname  = regLastname.value.trim();
+      const email     = regEmail.value.trim();
+      const password  = regPassword.value.trim();
+
+      try{
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        await set(ref(db, "users/"+userCred.user.uid), {
+          firstname, lastname, email
+        });
+        msg("Compte créé !", "ok");
+        regModal.classList.remove("active");
+      }catch(err){
+        msg(err.message);
+      }
+    };
+
+    /* RESET PASSWORD */
+    resetLink.onclick = async(e)=>{
+      e.preventDefault();
+      if(!loginEmail.value) return msg("Entre ton email d'abord.");
+      try{
+        await sendPasswordResetEmail(auth, loginEmail.value);
+        msg("Email envoyé ✓", "ok");
+      }catch(err){ msg(err.message); }
+    };
+
+    /* STATE CHANGE */
+    onAuthStateChanged(auth, async(user)=>{
+      if(user){
+        loginForm.style.display = "none";
+        loggedArea.style.display = "block";
+        displayEmailEl.textContent = user.email;
+
+        const snap = await get(child(ref(db), "users/"+user.uid));
+        if(snap.exists()){
+          const d = snap.val();
+          displayNameEl.textContent = d.firstname + " " + d.lastname;
+          avatarEl.textContent = d.firstname[0].toUpperCase();
+        }else{
+          displayNameEl.textContent = "Utilisateur";
+        }
+      } else {
+        loginForm.style.display = "block";
+        loggedArea.style.display = "none";
+      }
+    });
+
+    /* SIGN OUT */
+    signOutBtn.onclick = ()=> signOut(auth);
+
+    /* OPEN APP BUTTON */
+    goApp.onclick = ()=> window.location.href = "app.html";
+
+    /* SERVICE WORKER */
+    if("serviceWorker" in navigator){
+      navigator.serviceWorker.register("sw.js");
+    }
+  </script>
 </body>
 </html>
