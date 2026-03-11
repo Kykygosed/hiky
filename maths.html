@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Entraînement Thalès - Brevet</title>
+
+<style>
+body{
+font-family: Arial;
+background:#f4f6f8;
+margin:40px;
+}
+
+.container{
+max-width:900px;
+margin:auto;
+background:white;
+padding:30px;
+border-radius:10px;
+box-shadow:0 0 10px rgba(0,0,0,0.1);
+}
+
+textarea{
+width:100%;
+height:150px;
+margin-top:10px;
+padding:10px;
+font-size:14px;
+}
+
+button{
+margin-top:15px;
+padding:10px 20px;
+font-size:16px;
+background:#4CAF50;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
+}
+
+button:hover{
+background:#3d8f40;
+}
+
+.result{
+margin-top:20px;
+background:#eef6ff;
+padding:15px;
+border-radius:6px;
+}
+
+.exercise{
+background:#f8f8f8;
+padding:15px;
+border-radius:6px;
+margin-bottom:20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Exercice de Thalès (type brevet)</h1>
+
+<div class="exercise" id="exercise"></div>
+
+<h3>Rédaction :</h3>
+<textarea id="redac" placeholder="Écris ta rédaction complète ici..."></textarea>
+
+<h3>Notes / Calculs :</h3>
+<textarea id="notes" placeholder="Tes brouillons ou calculs..."></textarea>
+
+<button onclick="evaluate()">Corriger avec l'IA</button>
+
+<div class="result" id="result"></div>
+
+</div>
+
+<script>
+
+function generateExercise(){
+
+let AD = Math.floor(Math.random()*5)+2
+let AB = AD*3
+let AC = Math.floor(Math.random()*10)+10
+
+document.getElementById("exercise").innerHTML =
+`
+Dans le triangle ABC :
+
+A, D, B sont alignés  
+A, E, C sont alignés  
+
+(DE) est parallèle à (BC)
+
+AD = ${AD} cm  
+AB = ${AB} cm  
+AC = ${AC} cm  
+
+Calculer AE.
+
+Rédige la démonstration avec le théorème de Thalès.
+`
+}
+
+generateExercise()
+
+async function evaluate(){
+
+let redac = document.getElementById("redac").value
+
+let response = await fetch("https://api.openai.com/v1/chat/completions",{
+method:"POST",
+headers:{
+"Content-Type":"application/json",
+"Authorization":"Bearer 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"
+},
+body:JSON.stringify({
+model:"gpt-4.1-mini",
+messages:[
+{
+role:"system",
+content:"Tu es un professeur de mathématiques niveau brevet. Corrige la rédaction du théorème de Thalès. Donne une note sur 10 et explique les erreurs."
+},
+{
+role:"user",
+content:redac
+}
+]
+})
+})
+
+let data = await response.json()
+
+document.getElementById("result").innerText =
+data.choices[0].message.content
+
+}
+
+</script>
+
+</body>
+</html>
