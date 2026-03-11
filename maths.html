@@ -56,6 +56,13 @@ padding:15px;
 border-radius:6px;
 margin-bottom:20px;
 }
+
+#triangleCanvas{
+margin-top:20px;
+border:1px solid #ccc;
+background:#fff;
+display:block;
+}
 </style>
 </head>
 
@@ -66,6 +73,8 @@ margin-bottom:20px;
 <h1>Exercice de Thalès (type brevet)</h1>
 
 <div class="exercise" id="exercise"></div>
+
+<canvas id="triangleCanvas" width="400" height="300"></canvas>
 
 <h3>Rédaction :</h3>
 <textarea id="redac" placeholder="Écris ta rédaction complète ici..."></textarea>
@@ -80,66 +89,121 @@ margin-bottom:20px;
 </div>
 
 <script>
+let AD, AB, AC;
+let AE; // pour calcul futur
+let canvas = document.getElementById("triangleCanvas");
+let ctx = canvas.getContext("2d");
 
 function generateExercise(){
+    AD = Math.floor(Math.random()*5)+2;
+    AB = AD*3;
+    AC = Math.floor(Math.random()*10)+10;
 
-let AD = Math.floor(Math.random()*5)+2
-let AB = AD*3
-let AC = Math.floor(Math.random()*10)+10
+    document.getElementById("exercise").innerHTML =
+    `
+    Dans le triangle ABC :
 
-document.getElementById("exercise").innerHTML =
-`
-Dans le triangle ABC :
+    A, D, B sont alignés  
+    A, E, C sont alignés  
 
-A, D, B sont alignés  
-A, E, C sont alignés  
+    (DE) est parallèle à (BC)
 
-(DE) est parallèle à (BC)
+    AD = ${AD} cm  
+    AB = ${AB} cm  
+    AC = ${AC} cm  
 
-AD = ${AD} cm  
-AB = ${AB} cm  
-AC = ${AC} cm  
+    Calculer AE.
 
-Calculer AE.
+    Rédige la démonstration avec le théorème de Thalès.
+    `;
 
-Rédige la démonstration avec le théorème de Thalès.
-`
+    drawTriangle();
 }
 
-generateExercise()
+function drawTriangle(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Position des points sur le canvas (simplifié)
+    let margin = 50;
+    let scale = 10;
+
+    let Ax = margin;
+    let Ay = canvas.height - margin;
+
+    let Bx = Ax + AB*scale;
+    let By = Ay;
+
+    let Cx = Ax + (AC/2)*scale;
+    let Cy = Ay - AC*scale;
+
+    // D sur AB (AD connu)
+    let Dx = Ax + AD*scale;
+    let Dy = Ay;
+
+    // E sur AC (AE à calculer, ici juste milieu pour visualisation)
+    let Ex = Ax + (AC/2)*scale;
+    let Ey = Ay - (AC/2)*scale;
+
+    // Dessin triangle
+    ctx.beginPath();
+    ctx.moveTo(Ax, Ay);
+    ctx.lineTo(Bx, By);
+    ctx.lineTo(Cx, Cy);
+    ctx.closePath();
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Dessin points
+    drawPoint(Ax, Ay, "A");
+    drawPoint(Bx, By, "B");
+    drawPoint(Cx, Cy, "C");
+    drawPoint(Dx, Dy, "D");
+    drawPoint(Ex, Ey, "E");
+
+    // Dessin DE parallèle à BC
+    ctx.beginPath();
+    ctx.moveTo(Dx, Dy);
+    ctx.lineTo(Ex, Ey);
+    ctx.strokeStyle = "red";
+    ctx.setLineDash([5,5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawPoint(x,y,label){
+    ctx.fillStyle = "#007bff";
+    ctx.beginPath();
+    ctx.arc(x,y,5,0,2*Math.PI);
+    ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.font = "14px Arial";
+    ctx.fillText(label, x+7, y-7);
+}
 
 async function evaluate(){
+    let redac = document.getElementById("redac").value;
 
-let redac = document.getElementById("redac").value
+    let response = await fetch("https://api.openai.com/v1/chat/completions",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json",
+            "Authorization":"Bearer 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"
+        },
+        body:JSON.stringify({
+            model:"gpt-4.1-mini",
+            messages:[
+                { role:"system", content:"Tu es un professeur de mathématiques niveau brevet. Corrige la rédaction du théorème de Thalès. Donne une note sur 10 et explique les erreurs." },
+                { role:"user", content:redac }
+            ]
+        })
+    });
 
-let response = await fetch("https://api.openai.com/v1/chat/completions",{
-method:"POST",
-headers:{
-"Content-Type":"application/json",
-"Authorization":"Bearer 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"
-},
-body:JSON.stringify({
-model:"gpt-4.1-mini",
-messages:[
-{
-role:"system",
-content:"Tu es un professeur de mathématiques niveau brevet. Corrige la rédaction du théorème de Thalès. Donne une note sur 10 et explique les erreurs."
-},
-{
-role:"user",
-content:redac
-}
-]
-})
-})
-
-let data = await response.json()
-
-document.getElementById("result").innerText =
-data.choices[0].message.content
-
+    let data = await response.json();
+    document.getElementById("result").innerText = data.choices[0].message.content;
 }
 
+generateExercise();
 </script>
 
 </body>
