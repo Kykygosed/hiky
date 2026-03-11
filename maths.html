@@ -88,13 +88,15 @@ display:block;
 
 </div>
 
+<canvas id="triangleCanvas" width="400" height="300"></canvas>
+
 <script>
-let AD, AB, AC;
-let AE; // pour calcul futur
 let canvas = document.getElementById("triangleCanvas");
 let ctx = canvas.getContext("2d");
 
-function generateExercise(){
+let AD, AB, AC, AE;
+
+function generateExercise() {
     AD = Math.floor(Math.random()*5)+2;
     AB = AD*3;
     AC = Math.floor(Math.random()*10)+10;
@@ -123,28 +125,29 @@ function generateExercise(){
 function drawTriangle(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // Position des points sur le canvas (simplifié)
     let margin = 50;
     let scale = 10;
 
+    // Points de base sur le canvas
     let Ax = margin;
     let Ay = canvas.height - margin;
-
     let Bx = Ax + AB*scale;
     let By = Ay;
-
-    let Cx = Ax + (AC/2)*scale;
+    let Cx = Ax + AC*scale/2;
     let Cy = Ay - AC*scale;
 
-    // D sur AB (AD connu)
+    // D sur AB
     let Dx = Ax + AD*scale;
     let Dy = Ay;
 
-    // E sur AC (AE à calculer, ici juste milieu pour visualisation)
-    let Ex = Ax + (AC/2)*scale;
-    let Ey = Ay - (AC/2)*scale;
+    // Calcul AE selon Thalès (AE/AC = AD/AB)
+    AE = (AD / AB) * AC;
 
-    // Dessin triangle
+    // E sur AC
+    let Ex = Ax + (Cx - Ax)*(AE/AC);
+    let Ey = Ay + (Cy - Ay)*(AE/AC);
+
+    // Dessin triangle ABC
     ctx.beginPath();
     ctx.moveTo(Ax, Ay);
     ctx.lineTo(Bx, By);
@@ -154,13 +157,6 @@ function drawTriangle(){
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Dessin points
-    drawPoint(Ax, Ay, "A");
-    drawPoint(Bx, By, "B");
-    drawPoint(Cx, Cy, "C");
-    drawPoint(Dx, Dy, "D");
-    drawPoint(Ex, Ey, "E");
-
     // Dessin DE parallèle à BC
     ctx.beginPath();
     ctx.moveTo(Dx, Dy);
@@ -169,42 +165,26 @@ function drawTriangle(){
     ctx.setLineDash([5,5]);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Dessin des points
+    drawPoint(Ax, Ay, "A");
+    drawPoint(Bx, By, "B");
+    drawPoint(Cx, Cy, "C");
+    drawPoint(Dx, Dy, "D");
+    drawPoint(Ex, Ey, "E");
 }
 
-function drawPoint(x,y,label){
+function drawPoint(x, y, label) {
     ctx.fillStyle = "#007bff";
     ctx.beginPath();
-    ctx.arc(x,y,5,0,2*Math.PI);
+    ctx.arc(x, y, 5, 0, 2*Math.PI);
     ctx.fill();
     ctx.fillStyle = "#000";
     ctx.font = "14px Arial";
-    ctx.fillText(label, x+7, y-7);
-}
-
-async function evaluate(){
-    let redac = document.getElementById("redac").value;
-
-    let response = await fetch("https://api.openai.com/v1/chat/completions",{
-        method:"POST",
-        headers:{
-            "Content-Type":"application/json",
-            "Authorization":"Bearer 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"
-        },
-        body:JSON.stringify({
-            model:"gpt-4.1-mini",
-            messages:[
-                { role:"system", content:"Tu es un professeur de mathématiques niveau brevet. Corrige la rédaction du théorème de Thalès. Donne une note sur 10 et explique les erreurs." },
-                { role:"user", content:redac }
-            ]
-        })
-    });
-
-    let data = await response.json();
-    document.getElementById("result").innerText = data.choices[0].message.content;
+    ctx.fillText(label, x + 7, y - 7);
 }
 
 generateExercise();
 </script>
-
 </body>
 </html>
