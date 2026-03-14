@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>T.I.F.K. — Administration du Régime</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --gold:        #F5C518;
+      --gold-light:  #FFE066;
+      --gold-dark:   #C49A00;
+      --gold-deep:   #8A6B00;
+      --white:       #FAFAF5;
+      --off-white:   #F2EFE3;
+      --cream:       #EDE8D0;
+      --ink:         #1A1810;
+      --ink-mid:     #2C2A1F;
+      --ink-soft:    #4A4535;
+      --border:      rgba(245,197,24,0.3);
+      --glow:        rgba(245,197,24,0.12);
+      --shadow:      rgba(26,24,16,0.6);
+      --red:         #C0392B;
+      --red-soft:    rgba(192,57,43,0.15);
+      --green:       #27AE60;
+      --green-soft:  rgba(39,174,96,0.15);
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--ink);
+      color: var(--white);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245,197,24,0.06) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, transparent, transparent 59px, rgba(245,197,24,0.025) 59px, rgba(245,197,24,0.025) 60px),
+        repeating-linear-gradient(90deg, transparent, transparent 59px, rgba(245,197,24,0.025) 59px, rgba(245,197,24,0.025) 60px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: linear-gradient(180deg, rgba(10,9,5,0.98), rgba(20,18,10,0.95));
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      padding: 0 clamp(1.5rem, 5vw, 4rem);
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 40px var(--shadow);
+    }
+
+    .topbar::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--gold-light), var(--gold), transparent);
+      opacity: 0.5;
+    }
+
+    .topbar-left { display: flex; align-items: center; gap: 1rem; }
+
+    .flag-wrapper {
+      width: 48px; height: 32px;
+      border-radius: 3px; overflow: hidden;
+      border: 1px solid rgba(245,197,24,0.35);
+      box-shadow: 0 0 10px rgba(245,197,24,0.2), 0 2px 8px rgba(0,0,0,0.5);
+      flex-shrink: 0;
+    }
+
+    .flag-wrapper img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .topbar-divider {
+      width: 1px; height: 34px;
+      background: linear-gradient(180deg, transparent, var(--gold-dark), transparent);
+      opacity: 0.4;
+    }
+
+    .country-name {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: clamp(0.9rem, 2vw, 1.2rem);
+      letter-spacing: 0.25em;
+      color: var(--gold-light);
+      text-shadow: 0 0 20px rgba(245,197,24,0.35);
+    }
+
+    .country-subtitle {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.6rem;
+      letter-spacing: 0.3em;
+      color: var(--gold-dark);
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+
+    .topbar-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(192,57,43,0.15);
+      border: 1px solid rgba(192,57,43,0.35);
+      border-radius: 3px;
+      padding: 0.35rem 0.9rem;
+    }
+
+    .topbar-badge-dot {
+      width: 6px; height: 6px;
+      background: #e74c3c;
+      border-radius: 50%;
+      animation: blink 2s ease infinite;
+    }
+
+    .topbar-badge-text {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      color: #e74c3c;
+      text-transform: uppercase;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── LAYOUT ── */
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: clamp(2rem, 5vw, 4rem) clamp(1.5rem, 5vw, 3rem) 6rem;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 2.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 800px) {
+      .page { grid-template-columns: 1fr; }
+      .sidebar { order: -1; }
+    }
+
+    /* ── PANEL SHARED ── */
+    .panel {
+      background: linear-gradient(135deg, rgba(28,25,13,0.97), rgba(20,18,10,0.99));
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 1.4rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(90deg, rgba(245,197,24,0.04), transparent);
+    }
+
+    .panel-title-group {}
+
+    .panel-label {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.6rem;
+      letter-spacing: 0.45em;
+      color: var(--gold-dark);
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+
+    .panel-title {
+      font-family: 'Cinzel', serif;
+      font-weight: 600;
+      font-size: 1.1rem;
+      letter-spacing: 0.12em;
+      color: var(--gold-light);
+    }
+
+    .panel-icon {
+      font-size: 1.4rem;
+      opacity: 0.5;
+    }
+
+    .panel-body { padding: 2rem; }
+
+    /* ── FORM ── */
+    .form-group { margin-bottom: 1.6rem; }
+
+    .form-group:last-of-type { margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.68rem;
+      letter-spacing: 0.4em;
+      color: var(--gold-dark);
+      text-transform: uppercase;
+      margin-bottom: 0.6rem;
+    }
+
+    label span {
+      color: rgba(192,57,43,0.7);
+      margin-left: 0.2rem;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      width: 100%;
+      background: rgba(10,9,5,0.8);
+      border: 1px solid rgba(245,197,24,0.2);
+      border-radius: 3px;
+      color: var(--off-white);
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.05rem;
+      padding: 0.75rem 1rem;
+      outline: none;
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+      resize: vertical;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {
+      border-color: rgba(245,197,24,0.5);
+      box-shadow: 0 0 0 3px rgba(245,197,24,0.07), inset 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    textarea { min-height: 140px; }
+
+    .form-hint {
+      margin-top: 0.4rem;
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 0.85rem;
+      color: rgba(242,239,227,0.3);
+    }
+
+    .form-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(245,197,24,0.15), transparent);
+      margin: 1.8rem 0;
+    }
+
+    /* ── BUTTON ── */
+    .btn-submit {
+      width: 100%;
+      padding: 1rem 1.5rem;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold), var(--gold-light), var(--gold));
+      background-size: 200% 100%;
+      background-position: 0% center;
+      border: none;
+      border-radius: 3px;
+      color: var(--ink);
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background-position 0.4s ease, box-shadow 0.3s ease, transform 0.15s ease;
+      box-shadow: 0 4px 20px rgba(245,197,24,0.2);
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      background-position: 100% center;
+      box-shadow: 0 6px 30px rgba(245,197,24,0.35);
+      transform: translateY(-1px);
+    }
+
+    .btn-submit:active:not(:disabled) { transform: translateY(0); }
+
+    .btn-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 2.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
+      z-index: 9999;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      min-width: 280px;
+      max-width: 460px;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast-inner {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.9rem 1.4rem;
+      border-radius: 4px;
+      backdrop-filter: blur(12px);
+      border: 1px solid;
+    }
+
+    .toast-inner.success {
+      background: rgba(10,20,12,0.95);
+      border-color: rgba(39,174,96,0.4);
+    }
+
+    .toast-inner.error {
+      background: rgba(20,8,8,0.95);
+      border-color: rgba(192,57,43,0.4);
+    }
+
+    .toast-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .toast-msg {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1rem;
+      color: var(--off-white);
+    }
+
+    /* ── LAW LIST ── */
+    .law-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .law-item {
+      background: rgba(10,9,5,0.7);
+      border: 1px solid rgba(245,197,24,0.15);
+      border-radius: 3px;
+      padding: 0.9rem 1.1rem;
+      display: grid;
+      grid-template-columns: 48px 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+      transition: border-color 0.25s, background 0.25s;
+      animation: fadeIn 0.4s ease both;
+    }
+
+    .law-item:hover {
+      border-color: rgba(245,197,24,0.3);
+      background: rgba(18,16,8,0.9);
+    }
+
+    .law-item-order {
+      font-family: 'Cinzel', serif;
+      font-size: 1.1rem;
+      color: var(--gold);
+      text-align: center;
+      font-weight: 700;
+      text-shadow: 0 0 10px rgba(245,197,24,0.25);
+    }
+
+    .law-item-body { min-width: 0; }
+
+    .law-item-id {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      color: var(--gold-dark);
+      text-transform: uppercase;
+      margin-bottom: 0.2rem;
+    }
+
+    .law-item-content {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 0.92rem;
+      color: rgba(242,239,227,0.65);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .btn-delete {
+      background: none;
+      border: 1px solid rgba(192,57,43,0.25);
+      border-radius: 3px;
+      color: rgba(192,57,43,0.5);
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .btn-delete:hover {
+      border-color: rgba(192,57,43,0.6);
+      color: #e74c3c;
+      background: rgba(192,57,43,0.1);
+    }
+
+    /* ── COUNTER ── */
+    .law-count {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      color: rgba(245,197,24,0.3);
+      text-transform: uppercase;
+    }
+
+    /* ── EMPTY / LOADING ── */
+    .list-loading, .list-empty {
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+
+    .list-spinner {
+      width: 28px; height: 28px;
+      border: 2px solid rgba(245,197,24,0.1);
+      border-top-color: var(--gold-dark);
+      border-radius: 50%;
+      margin: 0 auto 0.8rem;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .list-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 0.9rem;
+      color: rgba(242,239,227,0.3);
+    }
+
+    /* ── CONFIRM MODAL ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5,4,2,0.85);
+      backdrop-filter: blur(6px);
+      z-index: 5000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      background: linear-gradient(135deg, rgba(30,27,13,0.99), rgba(18,16,8,0.99));
+      border: 1px solid rgba(192,57,43,0.35);
+      border-radius: 4px;
+      padding: 2rem 2.5rem;
+      max-width: 400px;
+      width: 90%;
+      transform: scale(0.95);
+      transition: transform 0.25s ease;
+      text-align: center;
+    }
+
+    .modal-overlay.open .modal { transform: scale(1); }
+
+    .modal-icon { font-size: 2rem; margin-bottom: 1rem; }
+
+    .modal-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+      color: var(--gold-light);
+      margin-bottom: 0.75rem;
+    }
+
+    .modal-desc {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 1rem;
+      color: rgba(242,239,227,0.5);
+      margin-bottom: 1.75rem;
+      line-height: 1.6;
+    }
+
+    .modal-actions { display: flex; gap: 0.75rem; }
+
+    .btn-modal {
+      flex: 1;
+      padding: 0.7rem 1rem;
+      border-radius: 3px;
+      font-family: 'Cinzel', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      border-color: rgba(245,197,24,0.2);
+      color: rgba(245,197,24,0.5);
+    }
+
+    .btn-cancel:hover {
+      border-color: rgba(245,197,24,0.5);
+      color: var(--gold);
+    }
+
+    .btn-confirm-delete {
+      background: rgba(192,57,43,0.15);
+      border-color: rgba(192,57,43,0.4);
+      color: #e74c3c;
+    }
+
+    .btn-confirm-delete:hover {
+      background: rgba(192,57,43,0.3);
+      border-color: rgba(192,57,43,0.7);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="flag-wrapper">
+        <img src="./flag.png" alt="Drapeau T.I.F.K." onerror="this.style.background='linear-gradient(135deg,#F5C518,#fff)'">
+      </div>
+      <div class="topbar-divider"></div>
+      <div>
+        <div class="country-name">T.I.F.K.</div>
+        <div class="country-subtitle">Panneau d'Administration</div>
+      </div>
+    </div>
+    <div class="topbar-badge">
+      <div class="topbar-badge-dot"></div>
+      <span class="topbar-badge-text">Accès Restreint</span>
+    </div>
+  </header>
+
+  <!-- PAGE GRID -->
+  <div class="page">
+
+    <!-- ── FORMULAIRE ── -->
+    <div class="panel" style="animation: fadeUp 0.5s ease both;">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="panel-label">Promulgation</div>
+          <div class="panel-title">Édicter un Nouveau Décret</div>
+        </div>
+        <div class="panel-icon">📜</div>
+      </div>
+      <div class="panel-body">
+
+        <div class="form-group">
+          <label>Identifiant de la loi <span>*</span></label>
+          <input type="text" id="input-id" placeholder="ex: 1, 2, 42…" />
+          <p class="form-hint">Numéro ou code unique de l'article.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Contenu du décret <span>*</span></label>
+          <textarea id="input-content" placeholder="Rédigez ici le texte intégral de la loi…"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Ordre d'affichage <span>*</span></label>
+          <input type="number" id="input-order" placeholder="ex: 1, 2, 3…" min="1" />
+          <p class="form-hint">Position dans la liste (1 = en premier).</p>
+        </div>
+
+        <div class="form-divider"></div>
+
+        <button class="btn-submit" id="btn-add" onclick="addLaw()">
+          Promulguer le Décret
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ── SIDEBAR : LISTE ── -->
+    <div class="sidebar" style="animation: fadeUp 0.5s ease 0.1s both; opacity:0; animation-fill-mode: forwards;">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <div class="panel-label">Corpus Législatif</div>
+            <div class="panel-title">Lois en Vigueur</div>
+          </div>
+          <span class="law-count" id="law-count">— lois</span>
+        </div>
+        <div class="panel-body" style="padding: 1.25rem;">
+          <div id="law-list-container">
+            <div class="list-loading">
+              <div class="list-spinner"></div>
+              <p class="list-text">Chargement des archives…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast">
+    <div class="toast-inner" id="toast-inner">
+      <span class="toast-icon" id="toast-icon"></span>
+      <span class="toast-msg" id="toast-msg"></span>
+    </div>
+  </div>
+
+  <!-- MODAL DE CONFIRMATION -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-icon">⚠️</div>
+      <div class="modal-title">Abroger ce Décret ?</div>
+      <p class="modal-desc" id="modal-desc">Cette action est irréversible. Le décret sera définitivement supprimé des archives du Régime.</p>
+      <div class="modal-actions">
+        <button class="btn-modal btn-cancel" onclick="closeModal()">Annuler</button>
+        <button class="btn-modal btn-confirm-delete" id="btn-confirm">Abroger</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE -->
+  <script type="module">
+    import { initializeApp }                       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, get, set, remove, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey:            "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+      authDomain:        "kylita-f2923.firebaseapp.com",
+      databaseURL:       "https://kylita-f2923-default-rtdb.firebaseio.com",
+      projectId:         "kylita-f2923",
+      storageBucket:     "kylita-f2923.firebasestorage.app",
+      messagingSenderId: "431823530994",
+      appId:             "1:431823530994:web:88a07e633751686e5ad96b",
+      measurementId:     "G-F4LLNWQJ16"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getDatabase(app);
+    const lawsRef = ref(db, "tifk/laws");
+
+    // ── Expose globally ──
+    window._db       = db;
+    window._lawsRef  = lawsRef;
+    window._ref      = ref;
+    window._set      = set;
+    window._remove   = remove;
+    window._push     = push;
+    window._get      = get;
+
+    // ── Initial load ──
+    loadList();
+    window.loadList = loadList;
+
+    async function loadList() {
+      const container = document.getElementById("law-list-container");
+      const countEl   = document.getElementById("law-count");
+
+      try {
+        const snap = await get(lawsRef);
+        container.innerHTML = "";
+
+        if (!snap.exists()) {
+          countEl.textContent = "0 loi";
+          container.innerHTML = `<div class="list-empty"><p class="list-text">Aucun décret promulgué.</p></div>`;
+          return;
+        }
+
+        const raw  = snap.val();
+        const laws = [];
+        for (const key in raw) {
+          laws.push({ _key: key, ...raw[key] });
+        }
+        laws.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+        countEl.textContent = `${laws.length} loi${laws.length > 1 ? "s" : ""}`;
+
+        const list = document.createElement("div");
+        list.className = "law-list";
+
+        laws.forEach(law => {
+          const item = document.createElement("div");
+          item.className = "law-item";
+          item.innerHTML = `
+            <div class="law-item-order">${law.order ?? "—"}</div>
+            <div class="law-item-body">
+              <div class="law-item-id">Article ${escHtml(String(law.id ?? law._key))}</div>
+              <div class="law-item-content">${escHtml(String(law.content ?? ""))}</div>
+            </div>
+            <button class="btn-delete" title="Abroger" onclick="confirmDelete('${law._key}', '${escHtml(String(law.id ?? law._key))}')">✕</button>`;
+          list.appendChild(item);
+        });
+
+        container.appendChild(list);
+
+      } catch (err) {
+        container.innerHTML = `<div class="list-empty"><p class="list-text" style="color:rgba(192,57,43,0.6)">Erreur : ${escHtml(err.message)}</p></div>`;
+      }
+    }
+  </script>
+
+  <script>
+    // ── ADD LAW ──
+    async function addLaw() {
+      const idVal      = document.getElementById("input-id").value.trim();
+      const contentVal = document.getElementById("input-content").value.trim();
+      const orderVal   = document.getElementById("input-order").value.trim();
+
+      if (!idVal || !contentVal || !orderVal) {
+        showToast("error", "⚠", "Tous les champs sont obligatoires.");
+        return;
+      }
+
+      const order = parseInt(orderVal);
+      if (isNaN(order) || order < 1) {
+        showToast("error", "⚠", "L'ordre doit être un entier positif.");
+        return;
+      }
+
+      const btn = document.getElementById("btn-add");
+      btn.disabled = true;
+      btn.textContent = "Promulgation en cours…";
+
+      try {
+        const newRef = window._push(window._lawsRef);
+        await window._set(newRef, { id: idVal, content: contentVal, order });
+
+        document.getElementById("input-id").value      = "";
+        document.getElementById("input-content").value = "";
+        document.getElementById("input-order").value   = "";
+
+        showToast("success", "✓", `Décret « Article ${idVal} » promulgué avec succès.`);
+        await window.loadList();
+
+      } catch (err) {
+        showToast("error", "✕", "Erreur Firebase : " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Promulguer le Décret";
+      }
+    }
+
+    // ── DELETE ──
+    let _pendingDeleteKey = null;
+
+    function confirmDelete(key, id) {
+      _pendingDeleteKey = key;
+      document.getElementById("modal-desc").textContent =
+        `Le décret « Article ${id} » sera définitivement supprimé des archives. Cette action est irréversible.`;
+      document.getElementById("modal").classList.add("open");
+      document.getElementById("btn-confirm").onclick = () => doDelete(key, id);
+    }
+
+    async function doDelete(key, id) {
+      closeModal();
+      try {
+        const targetRef = window._ref(window._db, `tifk/laws/${key}`);
+        await window._remove(targetRef);
+        showToast("success", "✓", `Décret « Article ${id} » abrogé.`);
+        await window.loadList();
+      } catch (err) {
+        showToast("error", "✕", "Erreur : " + err.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("modal").classList.remove("open");
+      _pendingDeleteKey = null;
+    }
+
+    // ── TOAST ──
+    let _toastTimer = null;
+    function showToast(type, icon, msg) {
+      const toast      = document.getElementById("toast");
+      const inner      = document.getElementById("toast-inner");
+      const toastIcon  = document.getElementById("toast-icon");
+      const toastMsg   = document.getElementById("toast-msg");
+
+      inner.className  = `toast-inner ${type}`;
+      toastIcon.textContent = icon;
+      toastMsg.textContent  = msg;
+
+      toast.classList.add("show");
+      if (_toastTimer) clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => toast.classList.remove("show"), 3500);
+    }
+
+    // ── HELPERS ──
+    function escHtml(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+    }
+
+    // Close modal on overlay click
+    document.getElementById("modal").addEventListener("click", e => {
+      if (e.target === document.getElementById("modal")) closeModal();
+    });
+
+    // Expose for inline onclick
+    window.addLaw         = addLaw;
+    window.confirmDelete  = confirmDelete;
+    window.closeModal     = closeModal;
+  </script>
+</body>
+</html>
