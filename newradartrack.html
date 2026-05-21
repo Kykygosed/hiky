@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RADARTRACK // SURVEILLANCE AÉRIENNE</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+:root{--g:#00ff41;--gd:#00aa2b;--bg:#000d02;--panel:rgba(0,13,2,0.94);--brd:rgba(0,255,65,0.2)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--g);font-family:'Share Tech Mono',monospace}
+#map{position:absolute;inset:0;z-index:1}
+.leaflet-container{background:#000d02!important}
+.leaflet-tile-pane{filter:saturate(0.3) brightness(0.48) hue-rotate(82deg)}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--g)!important;border:1px solid var(--brd)!important;font-size:18px!important;text-shadow:0 0 8px var(--g)!important;width:30px!important;height:30px!important;line-height:30px!important}
+.leaflet-control-zoom a:hover{background:rgba(0,255,65,0.1)!important}
+.leaflet-control-attribution{display:none!important}
+
+.scanlines{position:fixed;inset:0;z-index:1000;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px)}
+.vignette{position:fixed;inset:0;z-index:999;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.72) 100%)}
+.radar-wrap{position:fixed;inset:0;z-index:100;pointer-events:none;overflow:hidden}
+.radar-sweep{
+  position:absolute;width:280vmax;height:280vmax;top:50%;left:50%;
+  margin-left:-140vmax;margin-top:-140vmax;
+  background:conic-gradient(from 0deg at 50% 50%,transparent 0deg,transparent 316deg,rgba(0,255,65,0.018) 336deg,rgba(0,255,65,0.07) 353deg,rgba(0,255,65,0.16) 360deg);
+  animation:sweep 5s linear infinite;transform-origin:center
+}
+@keyframes sweep{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+#hud{position:fixed;top:0;left:0;right:0;z-index:600;height:52px;display:flex;align-items:center;background:var(--panel);border-bottom:1px solid var(--brd);padding:0 18px}
+.logo{font-family:'Orbitron',monospace;font-weight:900;font-size:16px;letter-spacing:5px;color:var(--g);text-shadow:0 0 16px var(--g),0 0 32px rgba(0,255,65,0.25);margin-right:28px;white-space:nowrap}
+.hstat{display:flex;flex-direction:column;border-left:1px solid rgba(0,255,65,0.13);padding:0 16px}
+.hl{font-size:8px;letter-spacing:2px;color:rgba(0,255,65,0.38);text-transform:uppercase;margin-bottom:2px}
+.hv{font-size:14px;color:var(--g);text-shadow:0 0 6px var(--g);letter-spacing:1px}
+.hud-r{margin-left:auto;display:flex;align-items:center;gap:12px}
+#clock{font-family:'Orbitron',monospace;font-size:18px;letter-spacing:3px;color:var(--g);text-shadow:0 0 10px var(--g)}
+.dot{width:7px;height:7px;background:var(--g);border-radius:50%;box-shadow:0 0 7px var(--g);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+#src-badge{font-size:9px;letter-spacing:1px;padding:2px 7px;border:1px solid rgba(0,255,65,0.3);color:rgba(0,255,65,0.6)}
+
+#panel{position:fixed;top:52px;right:0;bottom:0;width:285px;z-index:600;background:var(--panel);border-left:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden}
+.ph{padding:10px 14px;border-bottom:1px solid rgba(0,255,65,0.12);font-size:9px;letter-spacing:3px;color:rgba(0,255,65,0.35);font-family:'Orbitron',monospace}
+#ac-info{padding:12px 14px;border-bottom:1px solid rgba(0,255,65,0.1);min-height:200px;display:flex;flex-direction:column;justify-content:center}
+#ac-info.empty{align-items:center;font-size:10px;letter-spacing:2px;color:rgba(0,255,65,0.2);text-align:center}
+.ac-call{font-family:'Orbitron',monospace;font-size:21px;font-weight:700;color:var(--g);text-shadow:0 0 12px var(--g);margin-bottom:3px}
+.ac-icao{font-size:10px;color:rgba(0,255,65,0.4);letter-spacing:2px;margin-bottom:11px}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.dl{font-size:8px;letter-spacing:2px;color:rgba(0,255,65,0.28);text-transform:uppercase;margin-bottom:2px}
+.dv{font-size:13px;color:var(--g)}
+.up{color:#00ffaa}.dn{color:#ff6030}
+
+#ac-list-wrap{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--gd) transparent}
+#ac-list-wrap::-webkit-scrollbar{width:3px}
+#ac-list-wrap::-webkit-scrollbar-thumb{background:var(--gd)}
+.ac-row{padding:7px 14px;border-bottom:1px solid rgba(0,255,65,0.05);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.1s}
+.ac-row:hover{background:rgba(0,255,65,0.05)}
+.ac-row.sel{background:rgba(0,255,65,0.09);border-left:2px solid var(--g)}
+.rc{font-size:11px;color:var(--g);letter-spacing:1px;font-weight:bold}
+.rs{font-size:9px;color:rgba(0,255,65,0.35);margin-top:2px}
+.ra{font-size:10px;color:rgba(0,255,65,0.5);text-align:right}
+.rv{font-size:9px;color:rgba(0,255,65,0.28);text-align:right;margin-top:2px}
+
+#controls{position:fixed;bottom:18px;left:18px;z-index:600;display:flex;gap:6px;flex-wrap:wrap}
+.cbtn{background:rgba(0,13,2,0.88);border:1px solid rgba(0,255,65,0.2);color:rgba(0,255,65,0.6);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;padding:6px 11px;cursor:pointer;transition:all 0.13s}
+.cbtn:hover,.cbtn.on{background:rgba(0,255,65,0.1);border-color:var(--g);color:var(--g)}
+
+#rbar{position:fixed;bottom:0;left:0;right:285px;height:2px;z-index:700;background:rgba(0,255,65,0.07)}
+#rprog{height:100%;background:var(--g);box-shadow:0 0 5px var(--g);width:0%;transition:width linear}
+
+#coords{position:fixed;bottom:9px;left:50%;transform:translateX(-50%);z-index:600;font-size:9px;letter-spacing:2px;color:rgba(0,255,65,0.26);pointer-events:none}
+
+#toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:800;background:rgba(255,50,20,0.1);border:1px solid rgba(255,80,30,0.3);color:#ff7050;font-size:10px;letter-spacing:1px;padding:8px 16px;display:none;white-space:nowrap;max-width:90vw;text-align:center}
+#ok-toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:800;background:rgba(0,255,65,0.08);border:1px solid rgba(0,255,65,0.3);color:var(--g);font-size:10px;letter-spacing:1px;padding:8px 16px;display:none;white-space:nowrap}
+
+#load{position:fixed;inset:0;z-index:9000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity 0.8s}
+.lbar{width:250px;height:1px;background:rgba(0,255,65,0.1);overflow:hidden;position:relative}
+.lbar::after{content:'';position:absolute;height:100%;width:45%;background:var(--g);box-shadow:0 0 8px var(--g);animation:ls 1.5s ease-in-out infinite}
+@keyframes ls{0%{left:-45%}100%{left:100%}}
+.ltxt{font-size:10px;letter-spacing:3px;color:rgba(0,255,65,0.38)}
+.ac-div{cursor:pointer;display:flex;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+
+<div id="load">
+  <div style="font-family:'Orbitron',monospace;font-weight:900;font-size:26px;letter-spacing:8px;color:var(--g);text-shadow:0 0 22px var(--g)">RADARTRACK</div>
+  <div class="lbar"></div>
+  <div class="ltxt" id="ltxt">INITIALISATION...</div>
+</div>
+
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="radar-wrap"><div class="radar-sweep"></div></div>
+<div id="map"></div>
+<div id="toast"></div>
+<div id="ok-toast"></div>
+
+<div id="hud">
+  <div class="logo">RADARTRACK</div>
+  <div class="hstat"><span class="hl">Appareils</span><span class="hv" id="s-count">--</span></div>
+  <div class="hstat"><span class="hl">Région</span><span class="hv" id="s-zone">EUROPE</span></div>
+  <div class="hstat"><span class="hl">Alt. max</span><span class="hv" id="s-alt">---</span></div>
+  <div class="hstat"><span class="hl">Vit. max</span><span class="hv" id="s-spd">---</span></div>
+  <div class="hstat"><span class="hl">Màj dans</span><span class="hv" id="s-next">--s</span></div>
+  <div class="hud-r">
+    <span id="src-badge">adsb.fi</span>
+    <div class="dot"></div>
+    <span id="clock">00:00:00Z</span>
+  </div>
+</div>
+
+<div id="panel">
+  <div class="ph">// AÉRONEF SÉLECTIONNÉ</div>
+  <div id="ac-info" class="empty">
+    <div style="font-size:18px;margin-bottom:10px">◈</div>
+    <div>CLIQUER UN APPAREIL</div>
+    <div style="margin-top:5px;font-size:9px;opacity:.35">sur la carte ou dans la liste</div>
+  </div>
+  <div class="ph">// TRAFIC EN VUE &nbsp;<span id="lc" style="color:var(--g)">0</span></div>
+  <div id="ac-list-wrap"><div id="ac-list"></div></div>
+</div>
+
+<div id="controls">
+  <button class="cbtn on" id="b-europe" onclick="setRegion('europe')">EUROPE</button>
+  <button class="cbtn" id="b-france" onclick="setRegion('france')">FRANCE</button>
+  <button class="cbtn" id="b-med"    onclick="setRegion('med')">MÉDITERRANÉE</button>
+  <button class="cbtn" id="b-na"     onclick="setRegion('na')">AMÉRIQUE N.</button>
+  <button class="cbtn" onclick="refreshNow()">↺ MAJ</button>
+</div>
+
+<div id="rbar"><div id="rprog"></div></div>
+<div id="coords">LAT ------   LON ------</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════
+//  RADARTRACK
+//  Sources: opendata.adsb.fi (primaire) → api.adsb.lol (fallback)
+//  Format ADS-B readsb: alt en ft, vitesse en kt, déjà convertis
+// ══════════════════════════════════════════════════════
+
+// Régions : centre lat/lon + rayon en nautical miles
+const REGIONS = {
+  europe: {lat:50,   lon:10,  dist:1800, c:[50,10],   z:5, name:'EUROPE'},
+  france: {lat:46.5, lon:2.5, dist:650,  c:[46.5,2.5],z:6, name:'FRANCE'},
+  med:    {lat:37,   lon:17,  dist:1400, c:[37,17],   z:5, name:'MÉDITERRANÉE'},
+  na:     {lat:40,   lon:-95, dist:2200, c:[42,-100], z:4, name:'AMÉRIQUE N.'}
+};
+
+const REFRESH = 12000; // 12s
+let region = 'europe', markers = {}, selectedIcao = null;
+let refreshId = null, countdownId = null;
+let currentSource = 'adsb.fi';
+
+// ── MAP ──────────────────────────────────────────────
+const map = L.map('map', {
+  center: REGIONS.europe.c, zoom: REGIONS.europe.z,
+  zoomControl: false, attributionControl: false
+});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  {maxZoom:19, subdomains:'abcd'}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+map.on('mousemove', e => {
+  const la = e.latlng.lat.toFixed(4), lo = e.latlng.lng.toFixed(4);
+  document.getElementById('coords').textContent =
+    `LAT ${la>0?'+':''}${la}   LON ${lo>0?'+':''}${lo}`;
+});
+
+// ── CLOCK ────────────────────────────────────────────
+setInterval(() => {
+  const n = new Date(), p = x => String(x).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${p(n.getUTCHours())}:${p(n.getUTCMinutes())}:${p(n.getUTCSeconds())}Z`;
+}, 1000);
+
+// ── COUNTDOWN ────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownId);
+  let sec = REFRESH / 1000;
+  document.getElementById('s-next').textContent = sec + 's';
+  countdownId = setInterval(() => {
+    sec--;
+    document.getElementById('s-next').textContent = Math.max(0,sec) + 's';
+    if (sec <= 0) clearInterval(countdownId);
+  }, 1000);
+}
+
+// ── ICON ─────────────────────────────────────────────
+function planeIcon(hdg, sel) {
+  const a = hdg != null ? hdg : 0;
+  const c = sel ? '#ffffff' : '#00ff41';
+  const f = sel
+    ? 'drop-shadow(0 0 5px #fff) drop-shadow(0 0 10px #00ff41)'
+    : 'drop-shadow(0 0 3px #00ff41)';
+  const sz = sel ? 22 : 17;
+  return L.divIcon({
+    html: `<div class="ac-div" style="width:${sz}px;height:${sz}px">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${sz}" height="${sz}" viewBox="0 0 24 24"
+        style="transform:rotate(${a}deg);filter:${f};display:block">
+        <path fill="${c}" fill-opacity="${sel?1:0.9}"
+          d="M12 2L15.5 10L22 11.5L15.5 13.5L15 19L12 17.5L9 19L8.5 13.5L2 11.5L8.5 10Z"/>
+      </svg></div>`,
+    className: '', iconSize: [sz,sz], iconAnchor: [sz/2,sz/2]
+  });
+}
+
+// ── FETCH avec timeout ────────────────────────────────
+function ftch(url, ms=10000) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  return fetch(url, {signal: c.signal}).finally(() => clearTimeout(t));
+}
+
+// ── APIs ─────────────────────────────────────────────
+// Format readsb commun aux deux sources :
+//   ac.hex, ac.flight, ac.lat, ac.lon,
+//   ac.alt_baro (ft ou "ground"), ac.gs (kt), ac.track (deg),
+//   ac.baro_rate (fpm), ac.squawk, ac.category
+//   (pas de champ country — on utilise hex prefix)
+
+async function tryAdsbFi(r) {
+  const url = `https://opendata.adsb.fi/api/v2/lat=${r.lat}&lon=${r.lon}&dist=${r.dist}`;
+  const res = await ftch(url);
+  if (!res.ok) throw new Error('adsb.fi HTTP ' + res.status);
+  const d = await res.json();
+  if (!d.ac) throw new Error('adsb.fi: no ac field');
+  return {ac: d.ac, src: 'adsb.fi'};
+}
+
+async function tryAdsbLol(r) {
+  const url = `https://api.adsb.lol/v2/point/${r.lat}/${r.lon}/${r.dist}`;
+  const res = await ftch(url);
+  if (!res.ok) throw new Error('adsb.lol HTTP ' + res.status);
+  const d = await res.json();
+  if (!d.ac) throw new Error('adsb.lol: no ac field');
+  return {ac: d.ac, src: 'adsb.lol'};
+}
+
+async function fetchAircraft() {
+  const r = REGIONS[region];
+  try {
+    return await tryAdsbFi(r);
+  } catch(e1) {
+    console.warn('adsb.fi failed:', e1.message, '— trying adsb.lol');
+    try {
+      return await tryAdsbLol(r);
+    } catch(e2) {
+      throw new Error('Toutes les sources indisponibles. adsb.fi: ' + e1.message);
+    }
+  }
+}
+
+// ── NOTIFS ────────────────────────────────────────────
+function showErr(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = '⚠ ' + msg;
+  t.style.display = 'block';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.style.display='none', 6000);
+}
+function showOk(msg) {
+  const t = document.getElementById('ok-toast');
+  t.textContent = '✓ ' + msg;
+  t.style.display = 'block';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.style.display='none', 3000);
+}
+
+// ── PROGRESS BAR ──────────────────────────────────────
+function startBar() {
+  const p = document.getElementById('rprog');
+  p.style.transition = 'none'; p.style.width = '0%';
+  requestAnimationFrame(() => {
+    p.style.transition = `width ${REFRESH}ms linear`;
+    p.style.width = '100%';
+  });
+}
+
+// ── CONVERSION helpers ────────────────────────────────
+// adsb.fi/lol: alt en ft, vitesse en kt → pas besoin de convertir
+function getAltFt(ac) {
+  if (ac.alt_baro === 'ground' || ac.alt_baro == null) return null;
+  return typeof ac.alt_baro === 'number' ? ac.alt_baro : null;
+}
+function getAltFL(ft) {
+  if (!ft) return '---';
+  return 'FL' + String(Math.round(ft/100)).padStart(3,'0');
+}
+function isOnGround(ac) {
+  return ac.alt_baro === 'ground' || ac.on_ground === true || ac.gnd === true;
+}
+
+// ── UPDATE ────────────────────────────────────────────
+async function refresh() {
+  let result;
+  try { result = await fetchAircraft(); }
+  catch(e) { showErr(e.message); return; }
+
+  const {ac: allAc, src} = result;
+
+  // Mise à jour badge source
+  if (src !== currentSource) {
+    currentSource = src;
+    document.getElementById('src-badge').textContent = src;
+    showOk('Source: ' + src);
+  }
+
+  // Filtrer: en vol, position valide
+  const air = allAc.filter(ac =>
+    ac.lat != null && ac.lon != null && !isOnGround(ac)
+  );
+
+  // Stats
+  const alts = air.map(getAltFt).filter(Boolean);
+  const spds = air.map(ac => ac.gs).filter(v => v != null && v > 0);
+  const maxA = alts.length ? Math.max(...alts) : 0;
+  const maxS = spds.length ? Math.max(...spds) : 0;
+
+  document.getElementById('s-count').textContent = air.length;
+  document.getElementById('s-alt').textContent = maxA ? getAltFL(maxA) : '---';
+  document.getElementById('s-spd').textContent = maxS ? Math.round(maxS) + ' kt' : '---';
+  document.getElementById('lc').textContent = air.length;
+
+  // Markers
+  const seen = new Set();
+  air.forEach(ac => {
+    const id = ac.hex;
+    if (!id) return;
+    seen.add(id);
+    const sel = id === selectedIcao;
+    const icon = planeIcon(ac.track, sel);
+    if (markers[id]) {
+      markers[id].m.setLatLng([ac.lat, ac.lon]).setIcon(icon);
+      markers[id].d = ac;
+    } else {
+      const m = L.marker([ac.lat, ac.lon], {icon})
+        .addTo(map)
+        .on('click', () => selectAc(id));
+      markers[id] = {m, d: ac};
+    }
+  });
+
+  // Supprimer les avions disparus
+  for (const id in markers) {
+    if (!seen.has(id)) { map.removeLayer(markers[id].m); delete markers[id]; }
+  }
+
+  updateList(air);
+  if (selectedIcao && markers[selectedIcao]) showInfo(markers[selectedIcao].d);
+}
+
+// ── SELECT ────────────────────────────────────────────
+function selectAc(id) {
+  if (selectedIcao && markers[selectedIcao]) {
+    const p = markers[selectedIcao];
+    p.m.setIcon(planeIcon(p.d.track, false));
+  }
+  selectedIcao = id;
+  const ac = markers[id]; if (!ac) return;
+  ac.m.setIcon(planeIcon(ac.d.track, true));
+  showInfo(ac.d);
+  document.querySelectorAll('.ac-row').forEach(r =>
+    r.classList.toggle('sel', r.dataset.id === id));
+}
+
+function showInfo(ac) {
+  const ft = getAltFt(ac);
+  const fl = getAltFL(ft);
+  const ftStr = ft ? Math.round(ft).toLocaleString() + ' ft' : '---';
+  const kt = ac.gs != null ? Math.round(ac.gs) + ' kt' : '---';
+  const kmh = ac.gs != null ? Math.round(ac.gs * 1.852) + ' km/h' : '---';
+  const cap = ac.track != null ? Math.round(ac.track) + '°' : '---';
+  let vrS = '---';
+  if (ac.baro_rate != null && ac.baro_rate !== 0) {
+    const cls = ac.baro_rate > 0 ? 'up' : 'dn';
+    const dir = ac.baro_rate > 0 ? '▲' : '▼';
+    vrS = `<span class="${cls}">${dir} ${Math.abs(Math.round(ac.baro_rate))} fpm</span>`;
+  }
+  const callsign = (ac.flight||'').trim() || 'N/A';
+  const icao = (ac.hex||'').toUpperCase();
+  const country = icaoToCountry(ac.hex||'');
+  const flag = FLAGS[country] || '✈';
+  const cat = ac.category ? `<span style="font-size:9px;color:rgba(0,255,65,0.3);margin-left:8px">${ac.category}</span>` : '';
+
+  document.getElementById('ac-info').className = '';
+  document.getElementById('ac-info').innerHTML = `
+    <div class="ac-call">${callsign}${cat}</div>
+    <div class="ac-icao">${icao} · ${flag} ${country||'INCONNU'}</div>
+    <div class="dgrid">
+      <div><div class="dl">Niveau</div><div class="dv">${fl}</div></div>
+      <div><div class="dl">Altitude</div><div class="dv">${ftStr}</div></div>
+      <div><div class="dl">Vitesse</div><div class="dv">${kt}</div></div>
+      <div><div class="dl">Résid.</div><div class="dv">${kmh}</div></div>
+      <div><div class="dl">Cap</div><div class="dv">${cap}</div></div>
+      <div><div class="dl">V. vert.</div><div class="dv">${vrS}</div></div>
+      <div><div class="dl">Longitude</div><div class="dv">${ac.lon!=null?ac.lon.toFixed(4):'---'}</div></div>
+      <div><div class="dl">Latitude</div><div class="dv">${ac.lat!=null?ac.lat.toFixed(4):'---'}</div></div>
+    </div>`;
+}
+
+// ── LIST ──────────────────────────────────────────────
+function updateList(acs) {
+  const sorted = [...acs]
+    .sort((a,b) => (getAltFt(b)||0) - (getAltFt(a)||0))
+    .slice(0, 80);
+  document.getElementById('ac-list').innerHTML = sorted.map(ac => {
+    const id = ac.hex||'';
+    const call = (ac.flight||'').trim()||id.toUpperCase();
+    const country = icaoToCountry(id);
+    const fl = getAltFL(getAltFt(ac));
+    const kt = ac.gs != null ? Math.round(ac.gs)+'kt' : '---';
+    return `<div class="ac-row${id===selectedIcao?' sel':''}" data-id="${id}" onclick="selectAc('${id}')">
+      <div><div class="rc">${call}</div><div class="rs">${FLAGS[country]||''} ${country||id}</div></div>
+      <div><div class="ra">${fl}</div><div class="rv">${kt}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── REGION ────────────────────────────────────────────
+function setRegion(r) {
+  region = r;
+  const R = REGIONS[r];
+  map.flyTo(R.c, R.z, {duration:1.5});
+  document.getElementById('
