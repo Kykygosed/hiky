@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RADARTRACK // SURVEILLANCE AÉRIENNE</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+:root{--g:#00ff41;--gd:#00aa2b;--bg:#000d02;--panel:rgba(0,13,2,0.94);--border:rgba(0,255,65,0.22)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--g);font-family:'Share Tech Mono',monospace}
+#map{position:absolute;inset:0;z-index:1}
+.leaflet-container{background:#000d02!important}
+.leaflet-tile-pane{filter:saturate(0.35) brightness(0.5) hue-rotate(85deg)}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--g)!important;border:1px solid var(--border)!important;font-size:18px!important;text-shadow:0 0 8px var(--g)!important;width:30px!important;height:30px!important;line-height:30px!important}
+.leaflet-control-zoom a:hover{background:rgba(0,255,65,0.1)!important}
+.leaflet-control-attribution{display:none!important}
+
+/* overlays */
+.scanlines{position:fixed;inset:0;z-index:1000;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px)}
+.vignette{position:fixed;inset:0;z-index:999;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.72) 100%)}
+.radar-wrap{position:fixed;inset:0;z-index:100;pointer-events:none;overflow:hidden}
+.radar-sweep{
+  position:absolute;width:280vmax;height:280vmax;
+  top:50%;left:50%;margin-left:-140vmax;margin-top:-140vmax;
+  background:conic-gradient(from 0deg at 50% 50%,transparent 0deg,transparent 318deg,rgba(0,255,65,0.02) 338deg,rgba(0,255,65,0.08) 354deg,rgba(0,255,65,0.17) 360deg);
+  animation:sweep 5s linear infinite;transform-origin:center
+}
+@keyframes sweep{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+/* HUD */
+#hud{position:fixed;top:0;left:0;right:0;z-index:600;height:52px;display:flex;align-items:center;background:var(--panel);border-bottom:1px solid var(--border);padding:0 18px;gap:0}
+.logo{font-family:'Orbitron',monospace;font-weight:900;font-size:17px;letter-spacing:5px;color:var(--g);text-shadow:0 0 18px var(--g),0 0 35px rgba(0,255,65,0.3);margin-right:32px;white-space:nowrap}
+.hstat{display:flex;flex-direction:column;border-left:1px solid rgba(0,255,65,0.15);padding:0 18px}
+.hstat-l{font-size:9px;letter-spacing:2px;color:rgba(0,255,65,0.4);text-transform:uppercase;margin-bottom:2px}
+.hstat-v{font-size:14px;color:var(--g);text-shadow:0 0 7px var(--g);letter-spacing:1px}
+.hud-r{margin-left:auto;display:flex;align-items:center;gap:14px}
+#clock{font-family:'Orbitron',monospace;font-size:19px;letter-spacing:3px;color:var(--g);text-shadow:0 0 10px var(--g)}
+.dot{width:7px;height:7px;background:var(--g);border-radius:50%;box-shadow:0 0 7px var(--g);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+#live-lbl{font-size:9px;letter-spacing:2px;color:var(--gd)}
+
+/* panel */
+#panel{position:fixed;top:52px;right:0;bottom:0;width:288px;z-index:600;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.ph{padding:11px 15px;border-bottom:1px solid rgba(0,255,65,0.13);font-size:9px;letter-spacing:3px;color:rgba(0,255,65,0.38);font-family:'Orbitron',monospace}
+#ac-info{padding:13px 15px;border-bottom:1px solid rgba(0,255,65,0.1);min-height:205px;display:flex;flex-direction:column;justify-content:center}
+#ac-info.empty{align-items:center;font-size:10px;letter-spacing:2px;color:rgba(0,255,65,0.22);text-align:center}
+.ac-call{font-family:'Orbitron',monospace;font-size:22px;font-weight:700;color:var(--g);text-shadow:0 0 12px var(--g);margin-bottom:3px}
+.ac-icao{font-size:10px;color:rgba(0,255,65,0.42);letter-spacing:2px;margin-bottom:12px}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.di-l{font-size:8px;letter-spacing:2px;color:rgba(0,255,65,0.3);text-transform:uppercase;margin-bottom:2px}
+.di-v{font-size:13px;color:var(--g)}
+.vr-up{color:#00ffaa}.vr-dn{color:#ff6030}
+#ac-list-wrap{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--gd) transparent}
+#ac-list-wrap::-webkit-scrollbar{width:3px}
+#ac-list-wrap::-webkit-scrollbar-thumb{background:var(--gd);border-radius:2px}
+.ac-row{padding:7px 15px;border-bottom:1px solid rgba(0,255,65,0.05);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.1s}
+.ac-row:hover{background:rgba(0,255,65,0.055)}
+.ac-row.sel{background:rgba(0,255,65,0.1);border-left:2px solid var(--g)}
+.ar-call{font-size:11px;color:var(--g);letter-spacing:1px;font-weight:bold}
+.ar-sub{font-size:9px;color:rgba(0,255,65,0.38);margin-top:2px}
+.ar-alt{font-size:10px;color:rgba(0,255,65,0.52);text-align:right}
+.ar-spd{font-size:9px;color:rgba(0,255,65,0.28);text-align:right;margin-top:2px}
+
+/* controls */
+#controls{position:fixed;bottom:18px;left:18px;z-index:600;display:flex;gap:6px;flex-wrap:wrap}
+.cbtn{background:rgba(0,13,2,0.85);border:1px solid rgba(0,255,65,0.22);color:rgba(0,255,65,0.65);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;padding:6px 12px;cursor:pointer;transition:all 0.14s}
+.cbtn:hover,.cbtn.on{background:rgba(0,255,65,0.11);border-color:var(--g);color:var(--g);box-shadow:0 0 10px rgba(0,255,65,0.12)}
+
+/* refresh bar */
+#rbar{position:fixed;bottom:0;left:0;right:288px;height:2px;z-index:700;background:rgba(0,255,65,0.07)}
+#rprog{height:100%;background:var(--g);box-shadow:0 0 5px var(--g);width:0%;transition:width linear}
+
+/* coords */
+#coords{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:600;font-size:9px;letter-spacing:2px;color:rgba(0,255,65,0.28);pointer-events:none}
+
+/* toast */
+#toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:800;background:rgba(255,50,20,0.1);border:1px solid rgba(255,80,30,0.35);color:#ff7050;font-size:10px;letter-spacing:2px;padding:8px 16px;display:none;white-space:nowrap}
+
+/* loading */
+#load{position:fixed;inset:0;z-index:9000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity 0.8s}
+.lbar{width:260px;height:1px;background:rgba(0,255,65,0.12);overflow:hidden;position:relative}
+.lbar::after{content:'';position:absolute;height:100%;width:50%;background:var(--g);box-shadow:0 0 8px var(--g);animation:ls 1.6s ease-in-out infinite}
+@keyframes ls{0%{left:-50%}100%{left:100%}}
+.ltxt{font-size:10px;letter-spacing:3px;color:rgba(0,255,65,0.4)}
+
+.ac-div{cursor:pointer;display:flex;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+
+<div id="load">
+  <div style="font-family:'Orbitron',monospace;font-weight:900;font-size:26px;letter-spacing:8px;color:var(--g);text-shadow:0 0 22px var(--g)">RADARTRACK</div>
+  <div class="lbar"></div>
+  <div class="ltxt" id="ltxt">INITIALISATION...</div>
+</div>
+
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="radar-wrap"><div class="radar-sweep"></div></div>
+<div id="map"></div>
+<div id="toast"></div>
+
+<div id="hud">
+  <div class="logo">RADARTRACK</div>
+  <div class="hstat"><span class="hstat-l">Appareils</span><span class="hstat-v" id="s-count">--</span></div>
+  <div class="hstat"><span class="hstat-l">Région</span><span class="hstat-v" id="s-zone">EUROPE</span></div>
+  <div class="hstat"><span class="hstat-l">Alt. max</span><span class="hstat-v" id="s-alt">---</span></div>
+  <div class="hstat"><span class="hstat-l">Vit. max</span><span class="hstat-v" id="s-spd">---</span></div>
+  <div class="hstat"><span class="hstat-l">Màj dans</span><span class="hstat-v" id="s-next">--s</span></div>
+  <div class="hud-r">
+    <span id="live-lbl">LIVE</span><div class="dot"></div>
+    <span id="clock">00:00:00Z</span>
+  </div>
+</div>
+
+<div id="panel">
+  <div class="ph">// AÉRONEF SÉLECTIONNÉ</div>
+  <div id="ac-info" class="empty">
+    <div style="font-size:18px;margin-bottom:10px">◈</div>
+    <div>CLIQUER UN APPAREIL</div>
+    <div style="margin-top:5px;font-size:9px;opacity:.4">sur la carte ou dans la liste</div>
+  </div>
+  <div class="ph">// TRAFIC EN VUE &nbsp;<span id="lc" style="color:var(--g)">0</span></div>
+  <div id="ac-list-wrap"><div id="ac-list"></div></div>
+</div>
+
+<div id="controls">
+  <button class="cbtn on" id="b-europe" onclick="setRegion('europe')">EUROPE</button>
+  <button class="cbtn" id="b-france" onclick="setRegion('france')">FRANCE</button>
+  <button class="cbtn" id="b-med"    onclick="setRegion('med')">MÉDITERRANÉE</button>
+  <button class="cbtn" id="b-na"     onclick="setRegion('na')">AMÉRIQUE N.</button>
+  <button class="cbtn" onclick="refreshNow()">↺ MAJ</button>
+</div>
+
+<div id="rbar"><div id="rprog"></div></div>
+<div id="coords">LAT ------   LON ------</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const REGIONS = {
+  europe:{la:[36,60],lo:[-10,30],c:[50,10],z:5,name:'EUROPE'},
+  france:{la:[41,51.5],lo:[-5,9.5],c:[46.5,2.5],z:6,name:'FRANCE'},
+  med:   {la:[29,47],lo:[-5,37],c:[37,17],z:5,name:'MÉDITERRANÉE'},
+  na:    {la:[25,55],lo:[-130,-60],c:[42,-100],z:4,name:'AMÉRIQUE N.'}
+};
+const REFRESH = 15000;
+let region='europe', markers={}, selectedIcao=null, refreshId=null, countdownId=null;
+
+// ── MAP ──
+const map = L.map('map',{center:REGIONS.europe.c,zoom:REGIONS.europe.z,zoomControl:false,attributionControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+map.on('mousemove',e=>{
+  const la=e.latlng.lat.toFixed(4),lo=e.latlng.lng.toFixed(4);
+  document.getElementById('coords').textContent=`LAT ${la>0?'+':''}${la}   LON ${lo>0?'+':''}${lo}`;
+});
+
+// ── CLOCK ──
+setInterval(()=>{
+  const n=new Date(),p=x=>String(x).padStart(2,'0');
+  document.getElementById('clock').textContent=`${p(n.getUTCHours())}:${p(n.getUTCMinutes())}:${p(n.getUTCSeconds())}Z`;
+},1000);
+
+// ── COUNTDOWN ──
+function startCountdown(){
+  clearInterval(countdownId);
+  let sec=REFRESH/1000;
+  document.getElementById('s-next').textContent=sec+'s';
+  countdownId=setInterval(()=>{
+    sec--;
+    document.getElementById('s-next').textContent=Math.max(0,sec)+'s';
+    if(sec<=0)clearInterval(countdownId);
+  },1000);
+}
+
+// ── ICON ──
+function planeIcon(hdg,sel){
+  const a=hdg!=null?hdg:0, c=sel?'#fff':'#00ff41';
+  const f=sel?'drop-shadow(0 0 5px #fff) drop-shadow(0 0 10px #00ff41)':'drop-shadow(0 0 3px #00ff41)';
+  const sz=sel?22:18;
+  return L.divIcon({
+    html:`<div class="ac-div" style="width:${sz}px;height:${sz}px">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${sz}" height="${sz}" viewBox="0 0 24 24"
+        style="transform:rotate(${a}deg);filter:${f};display:block">
+        <path fill="${c}" fill-opacity="${sel?1:0.88}"
+          d="M12 2L15.5 10L22 11.5L15.5 13.5L15 19L12 17.5L9 19L8.5 13.5L2 11.5L8.5 10Z"/>
+      </svg></div>`,
+    className:'',iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]
+  });
+}
+
+// ── FETCH avec timeout manuel ──
+function fetchWithTimeout(url,ms){
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),ms);
+  return fetch(url,{signal:ctrl.signal}).finally(()=>clearTimeout(tid));
+}
+
+async function fetchFlights(){
+  const r=REGIONS[region];
+  const url=`https://opensky-network.org/api/states/all?lamin=${r.la[0]}&lomin=${r.lo[0]}&lamax=${r.la[1]}&lomax=${r.lo[1]}`;
+  const res=await fetchWithTimeout(url,12000);
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const d=await res.json();
+  return d.states||[];
+}
+
+// ── TOAST ──
+function toast(msg,dur=5000){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.style.display='block';
+  clearTimeout(t._tid);
+  t._tid=setTimeout(()=>t.style.display='none',dur);
+}
+
+// ── PROGRESS BAR ──
+function startBar(){
+  const p=document.getElementById('rprog');
+  p.style.transition='none';p.style.width='0%';
+  requestAnimationFrame(()=>{
+    p.style.transition=`width ${REFRESH}ms linear`;
+    p.style.width='100%';
+  });
+}
+
+// ── UPDATE ──
+async function refresh(){
+  let states;
+  try{ states=await fetchFlights(); }
+  catch(e){
+    toast('⚠ OPENSKY API INDISPONIBLE — '+e.message);
+    return;
+  }
+  const air=states.filter(s=>s[5]!=null&&s[6]!=null&&!s[8]);
+  const alts=air.map(s=>s[13]||s[7]).filter(Boolean);
+  const spds=air.map(s=>s[9]).filter(Boolean);
+  const maxA=alts.length?Math.max(...alts):0;
+  const maxS=spds.length?Math.max(...spds):0;
+  document.getElementById('s-count').textContent=air.length;
+  document.getElementById('s-alt').textContent=maxA?`FL${String(Math.round(maxA/30.48)).padStart(3,'0')}`:'---';
+  document.getElementById('s-spd').textContent=maxS?`${Math.round(maxS*1.944)} kt`:'---';
+  document.getElementById('lc').textContent=air.length;
+
+  const seen=new Set();
+  air.forEach(s=>{
+    const[icao,call,country,,,,lon,lat,baro,onGnd,vel,hdg]=[s[0],s[1],s[2],s[3],s[4],s[5],s[5],s[6],s[7],s[8],s[9],s[10]];
+    const lo2=s[5],la2=s[6];
+    if(lo2==null||la2==null)return;
+    seen.add(icao);
+    const sel=(icao===selectedIcao);
+    const icon=planeIcon(s[10],sel);
+    if(markers[icao]){markers[icao].m.setLatLng([la2,lo2]).setIcon(icon);markers[icao].d=s;}
+    else{const m=L.marker([la2,lo2],{icon}).addTo(map).on('click',()=>selectAc(icao));markers[icao]={m,d:s};}
+  });
+  for(const icao in markers)if(!seen.has(icao)){map.removeLayer(markers[icao].m);delete markers[icao];}
+  updateList(air);
+  if(selectedIcao&&markers[selectedIcao])showInfo(markers[selectedIcao].d);
+}
+
+// ── SELECT ──
+function selectAc(icao){
+  if(selectedIcao&&markers[selectedIcao]){
+    const p=markers[selectedIcao];p.m.setIcon(planeIcon(p.d[10],false));
+  }
+  selectedIcao=icao;
+  const ac=markers[icao];if(!ac)return;
+  ac.m.setIcon(planeIcon(ac.d[10],true));
+  showInfo(ac.d);
+  document.querySelectorAll('.ac-row').forEach(r=>r.classList.toggle('sel',r.dataset.icao===icao));
+}
+
+function showInfo(s){
+  const icao=s[0],call=s[1],country=s[2],lo=s[5],la=s[6],baro=s[7],vel=s[9],hdg=s[10],vr=s[11];
+  const fl=baro?`FL${String(Math.round(baro/30.48)).padStart(3,'0')}`:'---';
+  const ft=baro?Math.round(baro*3.281).toLocaleString()+' ft':'---';
+  const kt=vel?Math.round(vel*1.944)+' kt':'---';
+  const kmh=vel?Math.round(vel*3.6)+' km/h':'---';
+  const cap=hdg!=null?Math.round(hdg)+'°':'---';
+  let vrS='---';
+  if(vr!=null&&vr!==0){const cls=vr>0?'vr-up':'vr-dn';const dir=vr>0?'▲':'▼';vrS=`<span class="${cls}">${dir} ${Math.abs(Math.round(vr*196.85))} fpm</span>`;}
+  const flag=FLAGS[country]||'✈';
+  document.getElementById('ac-info').className='';
+  document.getElementById('ac-info').innerHTML=`
+    <div class="ac-call">${(call||'').trim()||'N/A'}</div>
+    <div class="ac-icao">${icao.toUpperCase()} · ${flag} ${country||'INCONNU'}</div>
+    <div class="dgrid">
+      <div><div class="di-l">Niveau</div><div class="di-v">${fl}</div></div>
+      <div><div class="di-l">Altitude</div><div class="di-v">${ft}</div></div>
+      <div><div class="di-l">Vitesse</div><div class="di-v">${kt}</div></div>
+      <div><div class="di-l">Résid.</div><div class="di-v">${kmh}</div></div>
+      <div><div class="di-l">Cap</div><div class="di-v">${cap}</div></div>
+      <div><div class="di-l">V. vert.</div><div class="di-v">${vrS}</div></div>
+      <div><div class="di-l">Longitude</div><div class="di-v">${lo!=null?lo.toFixed(4):'---'}</div></div>
+      <div><div class="di-l">Latitude</div><div class="di-v">${la!=null?la.toFixed(4):'---'}</div></div>
+    </div>`;
+}
+
+// ── LIST ──
+function updateList(states){
+  const sorted=[...states].filter(s=>s[5]&&s[6]&&!s[8]).sort((a,b)=>(b[7]||0)-(a[7]||0)).slice(0,80);
+  document.getElementById('ac-list').innerHTML=sorted.map(s=>{
+    const icao=s[0],call=s[1],country=s[2],baro=s[7],vel=s[9];
+    const fl=baro?`FL${String(Math.round(baro/30.48)).padStart(3,'0')}`:'---';
+    const kt=vel?Math.round(vel*1.944)+'kt':'---';
+    const cs=(call||'').trim()||icao;
+    return `<div class="ac-row${icao===selectedIcao?' sel':''}" data-icao="${icao}" onclick="selectAc('${icao}')">
+      <div><div class="ar-call">${cs}</div><div class="ar-sub">${FLAGS[country]||''} ${country||'--'}</div></div>
+      <div><div class="ar-alt">${fl}</div><div class="ar-spd">${kt}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── REGION ──
+function setRegion(r){
+  region=r;const R=REGIONS[r];
+  map.flyTo(R.c,R.z,{duration:1.5});
+  document.getElementById('s-zone').textContent=R.name;
+  Object.values(markers).forEach(({m})=>map.removeLayer(m));
+  markers={};selectedIcao=null;
+  document.getElementById('ac-info').className='empty';
+  document.getElementById('ac-info').innerHTML='<div style="font-size:18px;margin-bottom:10px">◈</div><div>CLIQUER UN APPAREIL</div>';
+  document.querySelectorAll('.cbtn').forEach(b=>b.classList.remove('on'));
+  const btn=document.getElementById('b-'+r);if(btn)btn.classList.add('on');
+  refreshNow();
+}
+
+function refreshNow(){
+  clearInterval(refreshId);
+  refresh();startBar();startCountdown();
+  refreshId=setInterval(()=>{refresh();startBar();startCountdown();},REFRESH);
+}
+
+const FLAGS={
+  'France':'🇫🇷','Germany':'🇩🇪','United Kingdom':'🇬🇧','Spain':'🇪🇸',
+  'Italy':'🇮🇹','Netherlands':'🇳🇱','Belgium':'🇧🇪','Switzerland':'🇨🇭',
+  'Austria':'🇦🇹','Portugal':'🇵🇹','Sweden':'🇸🇪','Norway':'🇳🇴',
+  'Denmark':'🇩🇰','Finland':'🇫🇮','Poland':'🇵🇱','Ireland':'🇮🇪',
+  'Greece':'🇬🇷','Turkey':'🇹🇷','United States':'🇺🇸','Canada':'🇨🇦',
+  'Russia':'🇷🇺','China':'🇨🇳','Japan':'🇯🇵','South Korea':'🇰🇷',
+  'India':'🇮🇳','Brazil':'🇧🇷','Australia':'🇦🇺','UAE':'🇦🇪',
+  'Qatar':'🇶🇦','Singapore':'🇸🇬','Morocco':'🇲🇦','Egypt':'🇪🇬',
+  'Israel':'🇮🇱','Saudi Arabia':'🇸🇦','Czech Republic':'🇨🇿',
+  'Hungary':'🇭🇺','Romania':'🇷🇴','Croatia':'🇭🇷','Luxembourg':'🇱🇺',
+  'Malta':'🇲🇹','Cyprus':'🇨🇾','Algeria':'🇩🇿','Tunisia':'🇹🇳'
+};
+
+// ── BOOT — loading screen disparaît après 2.5s max, sans attendre l'API ──
+(function boot(){
+  const msgs=['INITIALISATION...','CHARGEMENT LEAFLET...','CONNEXION OPENSKY...','CALIBRAGE RADAR...'];
+  let mi=0;
+  const ltxt=document.getElementById('ltxt');
+  const tid=setInterval(()=>{ltxt.textContent=msgs[++mi%msgs.length];},600);
+
+  // Cache l'écran de chargement après 2.5s, peu importe l'état de l'API
+  setTimeout(()=>{
+    clearInterval(tid);
+    const L=document.getElementById('load');
+    L.style.opacity='0';
+    setTimeout(()=>{if(L.parentNode)L.parentNode.removeChild(L);},800);
+  },2500);
+
+  // Lance le fetch en parallèle (n'attend pas)
+  refreshNow();
+})();
+</script>
+</body>
+</html>
