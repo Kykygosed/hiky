@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RADARTRACK // SURVEILLANCE AÉRIENNE</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --g: #00ff41;
+  --gd: #00aa2b;
+  --gdk: #003311;
+  --bg: #000d02;
+  --panel: rgba(0,13,2,0.93);
+  --border: rgba(0,255,65,0.22);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--g);font-family:'Share Tech Mono',monospace}
+
+/* ── MAP ── */
+#map{position:absolute;inset:0;z-index:1}
+.leaflet-container{background:#000d02!important}
+.leaflet-tile-pane{filter:saturate(0.4) brightness(0.55) hue-rotate(90deg)}
+.leaflet-control-zoom a{
+  background:var(--panel)!important;color:var(--g)!important;
+  border:1px solid var(--border)!important;font-size:18px!important;
+  text-shadow:0 0 8px var(--g)!important;width:30px!important;height:30px!important;
+  line-height:30px!important;
+}
+.leaflet-control-zoom a:hover{background:rgba(0,255,65,0.1)!important}
+.leaflet-control-attribution{display:none!important}
+
+/* ── OVERLAYS ── */
+.scanlines{
+  position:fixed;inset:0;z-index:1000;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px);
+}
+.vignette{
+  position:fixed;inset:0;z-index:999;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.75) 100%);
+}
+.radar-wrap{position:fixed;inset:0;z-index:100;pointer-events:none;overflow:hidden}
+.radar-sweep{
+  position:absolute;
+  width:280vmax;height:280vmax;
+  top:50%;left:50%;
+  margin-left:-140vmax;margin-top:-140vmax;
+  background:conic-gradient(from 0deg at 50% 50%,
+    transparent 0deg,
+    transparent 320deg,
+    rgba(0,255,65,0.025) 340deg,
+    rgba(0,255,65,0.09) 355deg,
+    rgba(0,255,65,0.18) 360deg);
+  animation:sweep 5s linear infinite;
+  transform-origin:center;
+}
+@keyframes sweep{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+/* ── HUD TOP ── */
+#hud{
+  position:fixed;top:0;left:0;right:0;z-index:600;
+  height:52px;display:flex;align-items:center;
+  background:var(--panel);border-bottom:1px solid var(--border);
+  padding:0 18px;gap:0;
+}
+.logo{
+  font-family:'Orbitron',monospace;font-weight:900;font-size:17px;
+  letter-spacing:5px;color:var(--g);text-shadow:0 0 18px var(--g),0 0 35px rgba(0,255,65,0.3);
+  margin-right:32px;white-space:nowrap;
+}
+.hstat{
+  display:flex;flex-direction:column;
+  border-left:1px solid rgba(0,255,65,0.15);padding:0 20px;
+}
+.hstat-l{font-size:9px;letter-spacing:2px;color:rgba(0,255,65,0.45);text-transform:uppercase;margin-bottom:2px}
+.hstat-v{font-size:15px;color:var(--g);text-shadow:0 0 8px var(--g);letter-spacing:1px}
+.hud-r{margin-left:auto;display:flex;align-items:center;gap:16px}
+#clock{font-family:'Orbitron',monospace;font-size:20px;letter-spacing:3px;color:var(--g);text-shadow:0 0 12px var(--g)}
+.dot{width:7px;height:7px;background:var(--g);border-radius:50%;box-shadow:0 0 7px var(--g);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.25}}
+#live-label{font-size:10px;letter-spacing:2px;color:var(--gd)}
+
+/* ── SIDE PANEL ── */
+#panel{
+  position:fixed;top:52px;right:0;bottom:0;width:290px;z-index:600;
+  background:var(--panel);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.ph{
+  padding:12px 16px;border-bottom:1px solid rgba(0,255,65,0.15);
+  font-size:9px;letter-spacing:3px;color:rgba(0,255,65,0.4);font-family:'Orbitron',monospace;
+}
+/* Selected aircraft info */
+#ac-info{
+  padding:14px 16px;border-bottom:1px solid rgba(0,255,65,0.12);
+  min-height:210px;display:flex;flex-direction:column;justify-content:center;
+}
+#ac-info.empty{align-items:center;font-size:10px;letter-spacing:2px;color:rgba(0,255,65,0.25);text-align:center}
+.ac-call{font-family:'Orbitron',monospace;font-size:22px;font-weight:700;color:var(--g);text-shadow:0 0 14px var(--g);margin-bottom:3px}
+.ac-icao{font-size:10px;color:rgba(0,255,65,0.45);letter-spacing:2px;margin-bottom:14px}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.di-l{font-size:8px;letter-spacing:2px;color:rgba(0,255,65,0.35);text-transform:uppercase;margin-bottom:2px}
+.di-v{font-size:13px;color:var(--g)}
+.vr-up{color:#00ffaa}.vr-dn{color:#ff6644}
+
+/* Aircraft list */
+#ac-list-wrap{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--gd) transparent}
+#ac-list-wrap::-webkit-scrollbar{width:3px}
+#ac-list-wrap::-webkit-scrollbar-track{background:transparent}
+#ac-list-wrap::-webkit-scrollbar-thumb{background:var(--gd);border-radius:2px}
+.ac-row{
+  padding:7px 16px;border-bottom:1px solid rgba(0,255,65,0.06);
+  cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+  transition:background 0.12s;
+}
+.ac-row:hover{background:rgba(0,255,65,0.06)}
+.ac-row.sel{background:rgba(0,255,65,0.1);border-left:2px solid var(--g)}
+.ar-call{font-size:11px;color:var(--g);letter-spacing:1px;font-weight:bold}
+.ar-sub{font-size:9px;color:rgba(0,255,65,0.4);margin-top:2px}
+.ar-alt{font-size:10px;color:rgba(0,255,65,0.55);text-align:right}
+.ar-spd{font-size:9px;color:rgba(0,255,65,0.3);text-align:right;margin-top:2px}
+
+/* ── CONTROLS ── */
+#controls{
+  position:fixed;bottom:18px;left:18px;z-index:600;
+  display:flex;gap:6px;flex-wrap:wrap;
+}
+.cbtn{
+  background:rgba(0,13,2,0.85);border:1px solid rgba(0,255,65,0.25);
+  color:rgba(0,255,65,0.7);font-family:'Share Tech Mono',monospace;font-size:10px;
+  letter-spacing:2px;padding:6px 12px;cursor:pointer;transition:all 0.15s;
+}
+.cbtn:hover,.cbtn.on{
+  background:rgba(0,255,65,0.12);border-color:var(--g);
+  color:var(--g);box-shadow:0 0 10px rgba(0,255,65,0.15);
+}
+
+/* ── REFRESH BAR ── */
+#rbar{position:fixed;bottom:0;left:0;right:290px;height:2px;z-index:700;background:rgba(0,255,65,0.08)}
+#rprog{height:100%;background:var(--g);box-shadow:0 0 5px var(--g);width:0%;transition:width linear}
+
+/* ── COORDS ── */
+#coords{
+  position:fixed;bottom:10px;left:50%;transform:translateX(-50%);
+  z-index:600;font-size:9px;letter-spacing:2px;color:rgba(0,255,65,0.3);pointer-events:none;
+}
+
+/* ── LOADING ── */
+#load{
+  position:fixed;inset:0;z-index:9000;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+}
+#load .logo{font-size:28px;letter-spacing:10px}
+.lbar{width:280px;height:1px;background:rgba(0,255,65,0.15);overflow:hidden;position:relative}
+.lbar::after{
+  content:'';position:absolute;height:100%;width:50%;background:var(--g);
+  box-shadow:0 0 8px var(--g);animation:lsweep 1.8s ease-in-out infinite;
+}
+@keyframes lsweep{0%{left:-50%}100%{left:100%}}
+.ltxt{font-size:10px;letter-spacing:3px;color:rgba(0,255,65,0.4);animation:fade 0.8s ease-in-out infinite alternate}
+@keyframes fade{from{opacity:0.3}to{opacity:1}}
+
+/* ── ERROR TOAST ── */
+#toast{
+  position:fixed;top:62px;left:50%;transform:translateX(-50%);z-index:800;
+  background:rgba(255,60,30,0.12);border:1px solid rgba(255,60,30,0.4);
+  color:#ff6644;font-size:10px;letter-spacing:2px;padding:8px 16px;
+  display:none;text-align:center;
+}
+
+/* ── AIRCRAFT MARKERS ── */
+.ac-div{cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ac-div svg{transition:filter 0.15s}
+.ac-div:hover svg{filter:drop-shadow(0 0 6px #fff)!important}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="load">
+  <div class="logo" style="font-family:'Orbitron',monospace;font-weight:900;color:var(--g);text-shadow:0 0 25px var(--g)">RADARTRACK</div>
+  <div class="lbar"></div>
+  <div class="ltxt" id="ltxt">INITIALISATION DU SYSTÈME...</div>
+</div>
+
+<!-- Overlays -->
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="radar-wrap"><div class="radar-sweep"></div></div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Error toast -->
+<div id="toast">⚠ OPENSKY API — LIMITE ATTEINTE. NOUVELLE TENTATIVE DANS 15s.</div>
+
+<!-- HUD Top -->
+<div id="hud">
+  <div class="logo">RADARTRACK</div>
+  <div class="hstat">
+    <span class="hstat-l">Appareils</span>
+    <span class="hstat-v" id="s-count">--</span>
+  </div>
+  <div class="hstat">
+    <span class="hstat-l">Région</span>
+    <span class="hstat-v" id="s-zone">EUROPE</span>
+  </div>
+  <div class="hstat">
+    <span class="hstat-l">Alt. max</span>
+    <span class="hstat-v" id="s-alt">---</span>
+  </div>
+  <div class="hstat">
+    <span class="hstat-l">Vit. max</span>
+    <span class="hstat-v" id="s-spd">---</span>
+  </div>
+  <div class="hstat">
+    <span class="hstat-l">Maj. dans</span>
+    <span class="hstat-v" id="s-next">--s</span>
+  </div>
+  <div class="hud-r">
+    <span id="live-label">LIVE</span>
+    <div class="dot"></div>
+    <span id="clock">00:00:00Z</span>
+  </div>
+</div>
+
+<!-- Side Panel -->
+<div id="panel">
+  <div class="ph">// AÉRONEF SÉLECTIONNÉ</div>
+  <div id="ac-info" class="empty">
+    <div>◈</div>
+    <div style="margin-top:8px">CLIQUER UN APPAREIL</div>
+    <div style="margin-top:4px;font-size:9px;opacity:.5">sur la carte ou la liste</div>
+  </div>
+  <div class="ph">// TRAFIC EN VUE &nbsp;<span id="lc" style="color:var(--g)">0</span></div>
+  <div id="ac-list-wrap"><div id="ac-list"></div></div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <button class="cbtn on" id="b-europe" onclick="setRegion('europe')">EUROPE</button>
+  <button class="cbtn" id="b-france" onclick="setRegion('france')">FRANCE</button>
+  <button class="cbtn" id="b-med" onclick="setRegion('med')">MÉDITERRANÉE</button>
+  <button class="cbtn" id="b-na" onclick="setRegion('na')">AMÉRIQUE N.</button>
+  <button class="cbtn" onclick="refreshNow()" style="border-color:rgba(0,255,65,0.4)">↺ MAJ</button>
+</div>
+
+<!-- Refresh bar -->
+<div id="rbar"><div id="rprog"></div></div>
+
+<!-- Coordinates -->
+<div id="coords">LAT ------ &nbsp; LON ------</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════
+//  RADARTRACK — Real-time flight surveillance
+//  Data: OpenSky Network (opensky-network.org)
+// ══════════════════════════════════════════════════════
+
+const REGIONS = {
+  europe: {la:[36,60],lo:[-10,30],c:[50,10],z:5,name:'EUROPE'},
+  france: {la:[41,51.5],lo:[-5,9.5],c:[46.5,2.5],z:6,name:'FRANCE'},
+  med:    {la:[29,47],lo:[-5,37],c:[37,17],z:5,name:'MÉDITERRANÉE'},
+  na:     {la:[25,55],lo:[-130,-60],c:[42,-100],z:4,name:'AMÉRIQUE N.'}
+};
+
+const REFRESH = 15000;
+let region = 'europe';
+let markers = {};
+let selectedIcao = null;
+let refreshId = null;
+let countdownId = null;
+let countdownSec = REFRESH / 1000;
+
+// ── MAP ────────────────────────────────────────────────
+const map = L.map('map', {
+  center: REGIONS.europe.c,
+  zoom: REGIONS.europe.z,
+  zoomControl: false,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom:19, subdomains:'abcd'
+}).addTo(map);
+
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+map.on('mousemove', e => {
+  const la = e.latlng.lat.toFixed(4), lo = e.latlng.lng.toFixed(4);
+  document.getElementById('coords').textContent =
+    `LAT ${la>0?'+':''}${la}   LON ${lo>0?'+':''}${lo}`;
+});
+
+// ── CLOCK ──────────────────────────────────────────────
+function tick() {
+  const n = new Date();
+  const pad = x => String(x).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}:${pad(n.getUTCSeconds())}Z`;
+}
+setInterval(tick, 1000); tick();
+
+// ── COUNTDOWN ─────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownId);
+  countdownSec = REFRESH / 1000;
+  countdownId = setInterval(() => {
+    countdownSec--;
+    document.getElementById('s-next').textContent = countdownSec + 's';
+    if (countdownSec <= 0) clearInterval(countdownId);
+  }, 1000);
+}
+
+// ── MARKER ICON ───────────────────────────────────────
+function planeIcon(hdg, sel) {
+  const ang = (hdg == null) ? 0 : hdg;
+  const c = sel ? '#ffffff' : '#00ff41';
+  const glow = sel
+    ? 'drop-shadow(0 0 5px #fff) drop-shadow(0 0 10px #00ff41)'
+    : 'drop-shadow(0 0 3px #00ff41)';
+  const size = sel ? 22 : 18;
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"
+  style="transform:rotate(${ang}deg);filter:${glow};display:block">
+  <path fill="${c}" fill-opacity="${sel?1:0.88}"
+    d="M12 2 L15.5 10 L22 11.5 L15.5 13.5 L15 19 L12 17.5 L9 19 L8.5 13.5 L2 11.5 L8.5 10 Z"/>
+</svg>`;
+  return L.divIcon({
+    html: `<div class="ac-div" style="width:${size}px;height:${size}px">${svg}</div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2]
+  });
+}
+
+// ── FETCH ─────────────────────────────────────────────
+async function fetchFlights() {
+  const r = REGIONS[region];
+  const url = `https://opensky-network.org/api/states/all?lamin=${r.la[0]}&lomin=${r.lo[0]}&lamax=${r.la[1]}&lomax=${r.lo[1]}`;
+  const res = await fetch(url, {signal: AbortSignal.timeout(10000)});
+  if (!res.ok) throw new Error(res.status);
+  const d = await res.json();
+  return d.states || [];
+}
+
+// ── REFRESH ───────────────────────────────────────────
+function showToast(msg, duration=5000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display='none', duration);
+}
+
+function startProgressBar() {
+  const p = document.getElementById('rprog');
+  p.style.transition = 'none'; p.style.width = '0%';
+  requestAnimationFrame(() => {
+    p.style.transition = `width ${REFRESH}ms linear`;
+    p.style.width = '100%';
+  });
+}
+
+async function refresh() {
+  let states;
+  try {
+    states = await fetchFlights();
+  } catch(e) {
+    showToast('⚠ OPENSKY API — ERREUR RÉSEAU. NOUVELLE TENTATIVE DANS 15s.');
+    return;
+  }
+  if (!states) return;
+
+  // Airborne only, valid position
+  const airborne = states.filter(s => s[5]!=null && s[6]!=null && !s[8]);
+
+  // Stats
+  const alts = airborne.map(s=>s[13]||s[7]).filter(Boolean);
+  const spds = airborne.map(s=>s[9]).filter(Boolean);
+  const maxAlt = alts.length ? Math.max(...alts) : 0;
+  const maxSpd = spds.length ? Math.max(...spds) : 0;
+
+  document.getElementById('s-count').textContent = airborne.length;
+  document.getElementById('s-alt').textContent = maxAlt
+    ? `FL${String(Math.round(maxAlt/30.48)).padStart(3,'0')}` : '---';
+  document.getElementById('s-spd').textContent = maxSpd
+    ? `${Math.round(maxSpd*1.944)} kt` : '---';
+  document.getElementById('lc').textContent = airborne.length;
+
+  // Update markers
+  const seen = new Set();
+  airborne.forEach(s => {
+    const [icao, call, country,,, lon, lat, baro, onGnd, vel, hdg] = s;
+    if (!lon||!lat) return;
+    seen.add(icao);
+    const sel = (icao === selectedIcao);
+    const icon = planeIcon(hdg, sel);
+    if (markers[icao]) {
+      markers[icao].m.setLatLng([lat, lon]).setIcon(icon);
+      markers[icao].d = s;
+    } else {
+      const m = L.marker([lat, lon], {icon})
+        .addTo(map)
+        .on('click', () => selectAc(icao));
+      markers[icao] = {m, d:s};
+    }
+  });
+
+  // Remove departed
+  for (const icao in markers) {
+    if (!seen.has(icao)) {
+      map.removeLayer(markers[icao].m);
+      delete markers[icao];
+    }
+  }
+
+  updateList(airborne);
+  if (selectedIcao && markers[selectedIcao]) showInfo(markers[selectedIcao].d);
+}
+
+// ── SELECT ─────────────────────────────────────────────
+function selectAc(icao) {
+  if (selectedIcao && markers[selectedIcao]) {
+    const prev = markers[selectedIcao];
+    prev.m.setIcon(planeIcon(prev.d[10], false));
+  }
+  selectedIcao = icao;
+  const ac = markers[icao];
+  if (!ac) return;
+  ac.m.setIcon(planeIcon(ac.d[10], true));
+  showInfo(ac.d);
+  document.querySelectorAll('.ac-row').forEach(r =>
+    r.classList.toggle('sel', r.dataset.icao===icao));
+}
+
+function showInfo(s) {
+  const [icao, call, country,,, lon, lat, baro,, vel, hdg, vr] = s;
+  const fl = baro ? `FL${String(Math.round(baro/30.48)).padStart(3,'0')}` : '---';
+  const ft = baro ? Math.round(baro*3.281).toLocaleString()+' ft' : '---';
+  const kt = vel ? Math.round(vel*1.944)+' kt' : '---';
+  const kmh = vel ? Math.round(vel*3.6)+' km/h' : '---';
+  const cap = hdg!=null ? Math.round(hdg)+'°' : '---';
+  let vrStr = '---';
+  if (vr!=null && vr!==0) {
+    const dir = vr>0 ? '▲' : '▼';
+    const cls = vr>0 ? 'vr-up' : 'vr-dn';
+    vrStr = `<span class="${cls}">${dir} ${Math.abs(Math.round(vr*196.85))} fpm</span>`;
+  }
+  const flag = FLAGS[country] || '✈';
+  const callStr = (call||'').trim()||'N/A';
+
+  document.getElementById('ac-info').className = '';
+  document.getElementById('ac-info').innerHTML = `
+    <div class="ac-call">${callStr}</div>
+    <div class="ac-icao">${icao.toUpperCase()} &nbsp;·&nbsp; ${flag} ${country||'INCONNU'}</div>
+    <div class="dgrid">
+      <div><div class="di-l">Niveau</div><div class="di-v">${fl}</div></div>
+      <div><div class="di-l">Altitude</div><div class="di-v">${ft}</div></div>
+      <div><div class="di-l">Vitesse</div><div class="di-v">${kt}</div></div>
+      <div><div class="di-l">Résid.</div><div class="di-v">${kmh}</div></div>
+      <div><div class="di-l">Cap</div><div class="di-v">${cap}</div></div>
+      <div><div class="di-l">V. vert.</div><div class="di-v">${vrStr}</div></div>
+      <div><div class="di-l">Longitude</div><div class="di-v">${lon!=null?lon.toFixed(4):'---'}</div></div>
+      <div><div class="di-l">Latitude</div><div class="di-v">${lat!=null?lat.toFixed(4):'---'}</div></div>
+    </div>`;
+}
+
+// ── LIST ──────────────────────────────────────────────
+function updateList(states) {
+  const sorted = [...states]
+    .filter(s=>s[5]&&s[6]&&!s[8])
+    .sort((a,b)=>(b[7]||0)-(a[7]||0))
+    .slice(0,80);
+
+  document.getElementById('ac-list').innerHTML = sorted.map(s => {
+    const [icao, call, country,,,,, baro,, vel] = s;
+    const fl = baro ? `FL${String(Math.round(baro/30.48)).padStart(3,'0')}` : '---';
+    const kt = vel ? Math.round(vel*1.944)+'kt' : '---';
+    const callStr = (call||'').trim()||icao;
+    const flag = FLAGS[country]||'';
+    return `<div class="ac-row${icao===selectedIcao?' sel':''}" data-icao="${icao}" onclick="selectAc('${icao}')">
+      <div>
+        <div class="ar-call">${callStr}</div>
+        <div class="ar-sub">${flag} ${country||'--'}</div>
+      </div>
+      <div>
+        <div class="ar-alt">${fl}</div>
+        <div class="ar-spd">${kt}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── REGION SWITCH ─────────────────────────────────────
+function setRegion(r) {
+  region = r;
+  const R = REGIONS[r];
+  map.flyTo(R.c, R.z, {duration:1.5});
+  document.getElementById('s-zone').textContent = R.name;
+  Object.values(markers).forEach(({m}) => map.removeLayer(m));
+  markers = {};
+  document.querySelectorAll('.cbtn').forEach(b=>b.classList.remove('on'));
+  const btn = document.getElementById('b-'+r);
+  if (btn) btn.classList.add('on');
+  refreshNow();
+}
+
+function refreshNow() {
+  clearInterval(refreshId);
+  refresh();
+  startProgressBar();
+  startCountdown();
+  refreshId = setInterval(() => {
+    refresh();
+    startProgressBar();
+    startCountdown();
+  }, REFRESH);
+}
+
+// ── COUNTRY FLAGS ─────────────────────────────────────
+const FLAGS = {
+  'France':'🇫🇷','Germany':'🇩🇪','United Kingdom':'🇬🇧','Spain':'🇪🇸',
+  'Italy':'🇮🇹','Netherlands':'🇳🇱','Belgium':'🇧🇪','Switzerland':'🇨🇭',
+  'Austria':'🇦🇹','Portugal':'🇵🇹','Sweden':'🇸🇪','Norway':'🇳🇴',
+  'Denmark':'🇩🇰','Finland':'🇫🇮','Poland':'🇵🇱','Ireland':'🇮🇪',
+  'Greece':'🇬🇷','Turkey':'🇹🇷','United States':'🇺🇸','Canada':'🇨🇦',
+  'Russia':'🇷🇺','China':'🇨🇳','Japan':'🇯🇵','South Korea':'🇰🇷',
+  'India':'🇮🇳','Brazil':'🇧🇷','Australia':'🇦🇺','UAE':'🇦🇪',
+  'Qatar':'🇶🇦','Singapore':'🇸🇬','Morocco':'🇲🇦','Tunisia':'🇹🇳',
+  'Alg
