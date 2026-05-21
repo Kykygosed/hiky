@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Scanner CIN — Kerdoré</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600;700&family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --blue:      #003189;
+    --blue-dark: #00205C;
+    --cyan:      #00A3D6;
+    --red:       #D0021B;
+    --green:     #18753C;
+    --gold:      #C9A84C;
+    --bg:        #0a0e1a;
+    --surface:   #111827;
+    --border:    rgba(255,255,255,0.08);
+    --text:      #f0f4ff;
+    --muted:     #8892a4;
+    --font:      'Source Sans 3', sans-serif;
+    --mono:      'Source Code Pro', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    width: 100%;
+    background: var(--blue-dark);
+    border-bottom: 2px solid var(--cyan);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .hdr-flag { width: 32px; height: auto; border-radius: 2px; box-shadow: 0 1px 6px rgba(0,0,0,0.4); }
+  .hdr-titles { display: flex; flex-direction: column; }
+  .hdr-country { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.14em; color: var(--cyan); text-transform: uppercase; }
+  .hdr-title   { font-size: 1rem; font-weight: 800; letter-spacing: 0.04em; line-height: 1.1; }
+  .hdr-sub     { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 1px; }
+  .hdr-badge {
+    margin-left: auto;
+    background: rgba(0,163,214,0.15);
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    width: 100%;
+    max-width: 900px;
+    padding: 1.5rem 1rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  /* ── SCANNER VIEWPORT ── */
+  .scanner-wrap {
+    position: relative;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 4/3;
+    border: 1px solid var(--border);
+  }
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  #canvas { display: none; }
+
+  /* Scan overlay */
+  .scan-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .scan-frame {
+    width: 200px; height: 200px;
+    position: relative;
+  }
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame span::before, .scan-frame span::after {
+    content: '';
+    position: absolute;
+    width: 24px; height: 24px;
+    border-color: var(--cyan);
+    border-style: solid;
+  }
+  .scan-frame::before  { top:0; left:0;    border-width: 2px 0 0 2px; }
+  .scan-frame::after   { top:0; right:0;   border-width: 2px 2px 0 0; }
+  .scan-frame span::before { bottom:0; left:0;   border-width: 0 0 2px 2px; }
+  .scan-frame span::after  { bottom:0; right:0;  border-width: 0 2px 2px 0; }
+
+  /* Laser line */
+  .scan-laser {
+    position: absolute; left: 8px; right: 8px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    box-shadow: 0 0 8px var(--cyan);
+    top: 50%;
+    animation: laser 2s ease-in-out infinite;
+    opacity: 0;
+  }
+  @keyframes laser {
+    0%   { transform: translateY(-80px); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { transform: translateY(80px); opacity: 0; }
+  }
+  .scanning .scan-laser { animation-play-state: running; }
+  .idle .scan-laser     { animation-play-state: paused; opacity:0; }
+
+  /* Status pill on video */
+  .scan-status-pill {
+    position: absolute;
+    bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 0.3rem 1rem;
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    letter-spacing: 0.06em;
+    backdrop-filter: blur(6px);
+    white-space: nowrap;
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .scan-status-pill.active { color: var(--cyan); border-color: rgba(0,163,214,0.4); }
+
+  /* ── CONTROLS ── */
+  .controls {
+    display: flex; gap: 0.75rem;
+  }
+  .btn {
+    font-family: var(--font);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.6rem 1.4rem;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-start {
+    background: var(--cyan);
+    color: #fff;
+  }
+  .btn-start:hover { background: #0091be; }
+  .btn-stop {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-stop:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+  .btn-valid {
+    background: var(--green);
+    color: #fff;
+    flex: 1;
+  }
+  .btn-valid:hover { background: #125c30; }
+  .btn-invalid {
+    background: var(--red);
+    color: #fff;
+    flex: 1;
+  }
+  .btn-invalid:hover { background: #a3011a; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── RESULT CARD ── */
+  .result-area {
+    min-height: 80px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .result-area.valid   { border-color: rgba(24,117,60,0.6); }
+  .result-area.invalid { border-color: rgba(208,2,27,0.6);  }
+
+  /* State: idle */
+  .result-idle {
+    display: flex; align-items: center; justify-content: center;
+    height: 80px; color: var(--muted);
+    font-size: 0.82rem; letter-spacing: 0.05em;
+    gap: 0.5rem;
+  }
+
+  /* State: loading */
+  .result-loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 80px; gap: 0.75rem;
+    font-size: 0.78rem; color: var(--cyan); letter-spacing: 0.08em;
+  }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(0,163,214,0.2);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* State: card found */
+  .result-card { padding: 0; }
+
+  /* Card top bar */
+  .card-topbar {
+    padding: 0.6rem 1rem;
+    display: flex; align-items: center; gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-topbar-id {
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+  }
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.7rem; font-weight: 800;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 0.2rem 0.7rem;
+    border-radius: 2px;
+  }
+  .status-chip.valid   { background: rgba(24,117,60,0.2);  color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+  .status-chip.invalid { background: rgba(208,2,27,0.2);   color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+  .status-chip.expired { background: rgba(234,179,8,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+  .card-topbar-time {
+    margin-left: auto;
+    font-size: 0.68rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* CNI mini card inside result */
+  .cni-card {
+    margin: 1rem;
+    display: flex;
+    background: #f0f4f8;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    color: #1a1a2e;
+    aspect-ratio: 85.6 / 54;
+    max-width: 520px;
+    position: relative;
+    font-family: 'Source Sans 3', sans-serif;
+  }
+  .cni-card::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg,rgba(0,85,164,0.04) 0px,rgba(0,85,164,0.04) 33%,rgba(255,255,255,0.01) 33%,rgba(255,255,255,0.01) 66%,rgba(239,65,53,0.04) 66%,rgba(239,65,53,0.04) 100%);
+    pointer-events: none; z-index: 0;
+  }
+  .cni-card::after {
+    content: ''; position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(0,0,0,0.05) 1px, transparent 1px);
+    background-size: 12px 12px;
+    pointer-events: none; z-index: 0;
+  }
+  .cni-accent {
+    width: 8px; flex-shrink: 0;
+    background: linear-gradient(180deg, #0f3a8a, #1a5fb4, #0f3a8a);
+    z-index: 1;
+  }
+  .cni-photo-col {
+    width: 90px; flex-shrink: 0;
+    padding: 10px 8px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    z-index: 1;
+  }
+  .cni-photo {
+    width: 74px; height: 90px;
+    background: #c8d8e8;
+    border: 1.5px solid #8aadcc;
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .cni-photo img { width:100%; height:100%; object-fit:cover; }
+  .cni-silhouette { width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg,#b8cfe0,#9ab8d0); }
+  .cni-silhouette svg { width:48px; height:48px; }
+  .cni-sig-label { font-size: 0.44rem; color: #666; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
+  .cni-body {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+    padding: 7px 10px 18px 6px;
+    z-index: 1;
+  }
+  .cni-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 5px; padding-bottom: 5px;
+    border-bottom: 1.5px solid #0f3a8a;
+  }
+  .cni-header-left { display: flex; align-items: center; gap: 5px; }
+  .cni-emblem img { width: 20px; height: auto; border-radius: 1px; }
+  .cni-country { font-size: 0.52rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #0f3a8a; line-height: 1.2; }
+  .cni-type    { font-size: 0.4rem; letter-spacing: 0.07em; text-transform: uppercase; color: #444; font-weight: 600; }
+  .cni-type-en { font-size: 0.36rem; color: #888; font-style: italic; }
+  .cni-kdr-badge { width: 20px; height: 20px; border-radius: 50%; background: #003399; display:flex; align-items:center; justify-content:center; font-size:0.42rem; font-weight:900; color:#f5c900; border:1px solid #f5c900; flex-shrink:0; }
+  .cni-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; flex:1; }
+  .cni-field { display:flex; flex-direction:column; gap:0; min-width:0; }
+  .cni-field.full { grid-column: 1/-1; }
+  .cni-lbl { font-size: 0.38rem; letter-spacing: 0.1em; text-transform: uppercase; color: #0f3a8a; font-weight: 700; }
+  .cni-lbl-en { font-size:0.32rem; color:#888; font-style:italic; }
+  .cni-val { font-size: 0.62rem; font-weight: 700; color: #1a1a2e; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cni-val.sm { font-size: 0.54rem; }
+  .cni-bottom {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-top: 4px; padding-top: 4px;
+    border-top: 1px solid rgba(15,58,138,0.2);
+  }
+  .cni-docnum-lbl { font-size:0.36rem; letter-spacing:0.1em; text-transform:uppercase; color:#0f3a8a; font-weight:700; }
+  .cni-docnum-val { font-size:0.76rem; font-weight:900; letter-spacing:0.12em; color:#0f3a8a; font-family:'Source Code Pro',monospace; }
+  .cni-expiry { text-align:right; }
+  .cni-expiry-lbl { font-size:0.36rem; letter-spacing:0.1em; text-transform:uppercase; color:#0f3a8a; font-weight:700; }
+  .cni-expiry-val { font-size:0.64rem; font-weight:700; font-family:'Source Code Pro',monospace; }
+  .cni-mrz {
+    position:absolute; bottom:0; left:8px; right:0;
+    background:rgba(255,255,255,0.55);
+    border-top:1px solid rgba(0,0,0,0.07);
+    padding: 2px 8px;
+    font-size:0.37rem; color:rgba(0,0,0,0.3);
+    letter-spacing:0.05em; font-family:'Source Code Pro',monospace;
+    white-space:nowrap; overflow:hidden; z-index:2;
+    line-height:1.5;
+  }
+  /* Inactive overlay on mini card */
+  .cni-card .inactive-stripe {
+    position:absolute; inset:0; z-index:5;
+    background: repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(208,2,27,0.07) 8px,rgba(208,2,27,0.07) 10px);
+    border: 2px solid rgba(208,2,27,0.35);
+    border-radius: 6px;
+    pointer-events: none;
+  }
+
+  /* ── NOT FOUND ── */
+  .result-notfound {
+    padding: 1.5rem;
+    text-align: center;
+  }
+  .result-notfound .big { font-size: 2rem; margin-bottom: 0.5rem; }
+  .result-notfound p { color: var(--muted); font-size: 0.82rem; }
+  .notfound-id { font-family: var(--mono); color: var(--text); font-weight: 700; font-size: 1rem; }
+
+  /* ── ACTIONS ── */
+  .card-actions {
+    margin: 0 1rem 1rem;
+    display: flex; gap: 0.5rem;
+  }
+
+  /* ── HISTORY ── */
+  .history-section h3 {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.6rem;
+  }
+  .history-list {
+    display: flex; flex-direction: column; gap: 0.35rem;
+  }
+  .history-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem 0.8rem;
+    display: flex; align-items: center; gap: 0.75rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .history-item:hover { border-color: rgba(0,163,214,0.3); }
+  .history-item.valid   { border-left: 3px solid var(--green); }
+  .history-item.invalid { border-left: 3px solid var(--red);  }
+  .history-item.unknown { border-left: 3px solid var(--muted); }
+  .history-id { font-family: var(--mono); font-size: 0.82rem; font-weight: 700; color: var(--cyan); min-width: 60px; }
+  .history-name { font-size: 0.8rem; flex: 1; }
+  .history-status { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+  .history-status.valid   { color: #4ade80; }
+  .history-status.invalid { color: #f87171; }
+  .history-status.unknown { color: var(--muted); }
+  .history-time { font-size: 0.62rem; color: var(--muted); font-family: var(--mono); margin-left: auto; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #1e293b; border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.65rem 1.25rem;
+    font-size: 0.8rem; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    transition: transform 0.3s cubic-bezier(.175,.885,.32,1.275);
+    z-index: 999; white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.ok  { border-color: rgba(74,222,128,0.4); color: #4ade80; }
+  #toast.err { border-color: rgba(248,113,113,0.4); color: #f87171; }
+</style>
+</head>
+<body>
+
+<header>
+  <img class="hdr-flag" src="assets/drapeau.png" alt="Kerdoré"/>
+  <div class="hdr-titles">
+    <span class="hdr-country">Démocratie de Kerdoré</span>
+    <span class="hdr-title">Contrôle d'Identité</span>
+    <span class="hdr-sub">Lecteur CIN — Usage officiel</span>
+  </div>
+  <div class="hdr-badge" id="scan-count-badge">0 scans</div>
+</header>
+
+<main>
+  <!-- Scanner -->
+  <div class="scanner-wrap" id="scanner-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="scan-overlay idle" id="scan-overlay">
+      <div class="scan-frame">
+        <span></span>
+        <div class="scan-laser"></div>
+      </div>
+    </div>
+    <div class="scan-status-pill" id="scan-pill">Caméra en attente…</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-start" onclick="startScan()">▶ Scanner</button>
+    <button class="btn btn-stop"  onclick="stopScan()">■ Stop</button>
+  </div>
+
+  <!-- Result -->
+  <div class="result-area" id="result-area">
+    <div class="result-idle">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="m14 14 3 3m3-3v3h-3"/></svg>
+      Pointez un DataMatrix vers la caméra
+    </div>
+  </div>
+
+  <!-- Historique -->
+  <div class="history-section">
+    <h3>Historique des scans</h3>
+    <div class="history-list" id="history-list">
+      <p style="font-size:0.78rem;color:var(--muted);">Aucun scan effectué.</p>
+    </div>
+  </div>
+</main>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+  authDomain: "kylita-f2923.firebaseapp.com",
+  databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+  projectId: "kylita-f2923",
+  storageBucket: "kylita-f2923.firebasestorage.app",
+  messagingSenderId: "431823530994",
+  appId: "1:431823530994:web:88a07e633751686e5ad96b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+</script>
+
+<script type="module">
+import { BrowserDatamatrixCodeReader } from "https://cdn.jsdelivr.net/npm/@zxing/browser@latest/+esm";
+
+// ── STATE ──
+const reader  = new BrowserDatamatrixCodeReader();
+const video   = document.getElementById('video');
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+let running   = false;
+let lastCode  = null;
+let scanCount = 0;
+const history = [];
+
+// ── AUDIO BEEP ──
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+
+function beep(freq = 880, duration = 120, type = 'sine', vol = 0.4) {
+  try {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration / 1000);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + duration / 1000);
+  } catch(e) {}
+}
+function beepOK()   { beep(880, 80); setTimeout(() => beep(1320, 120), 90); }
+function beepWarn() { beep(440, 200, 'sawtooth', 0.3); }
+function beepFail() { beep(220, 300, 'sawtooth', 0.25); }
+
+// ── CAMERA ──
+async function initCam() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  video.srcObject = stream;
+  return new Promise(r => video.onloadedmetadata = r);
+}
+
+// ── SCAN LOOP ──
+function startScan() {
+  running = true;
+  lastCode = null;
+  setPill('Recherche du DataMatrix…', true);
+  setOverlay('scanning');
+  loop();
+}
+function stopScan() {
+  running = false;
+  lastCode = null;
+  setPill('Scan arrêté', false);
+  setOverlay('idle');
+}
+
+async function loop() {
+  if (!running) return;
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+  ctx.drawImage(video, 0, 0);
+  try {
+    const result = await reader.decodeFromCanvas(canvas);
+    if (result?.text) {
+      const code = extractId(result.text);
+      if (code && code !== lastCode) {
+        lastCode = code;
+        await handleCode(code);
+      }
+    }
+  } catch(e) { /* no read this frame */ }
+  setPill('Recherche…', true);
+  requestAnimationFrame(loop);
+}
+
+function extractId(text) {
+  const digits = text.replace(/\D/g, '');
+  if (digits.length < 6) return null;
+  return digits.slice(0, 6);
+}
+
+// ── FIREBASE LOOKUP ──
+async function handleCode(id) {
+  stopScan();
+  setPill(`Code détecté : #${id}`, false);
+  showLoading(id);
+
+  try {
+    const snap = await db.ref(`citizens/${id}`).once('value');
+    if (!snap.exists()) {
+      beepFail();
+      showNotFound(id);
+      addHistory(id, null, 'unknown');
+    } else {
+      const c = snap.val();
+      const isActif    = (c.statut || 'actif') === 'actif';
+      const isExpired  = isCardExpired(c.expiration);
+      const cardValid  = isActif && !isExpired;
+
+      if (cardValid)       beepOK();
+      else if (!isActif)   beepFail();
+      else                 beepWarn();
+
+      showCard(id, c, snap.key);
+      addHistory(id, c, cardValid ? 'valid' : 'invalid');
+    }
+  } catch(e) {
+    beepFail();
+    showError(e.message);
+  }
+  scanCount++;
+  document.getElementById('scan-count-badge').textContent = `${scanCount} scan${scanCount > 1 ? 's' : ''}`;
+}
+
+function isCardExpired(expiration) {
+  if (!expiration) return false;
+  return new Date(expiration) < new Date();
+}
+
+// ── UI STATES ──
+function showLoading(id) {
+  document.getElementById('result-area').className = 'result-area';
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-loading">
+      <div class="spinner"></div>
+      Recherche du citoyen <span style="font-family:var(--mono);font-weight:700;color:var(--cyan);">#${id}</span>…
+    </div>`;
+}
+
+function showCard(id, c, key) {
+  const isActif   = (c.statut || 'actif') === 'actif';
+  const isExpired = isCardExpired(c.expiration);
+  const cardValid = isActif && !isExpired;
+
+  let statusClass, statusLabel;
+  if (!isActif)       { statusClass = 'invalid'; statusLabel = '● Suspendue'; }
+  else if (isExpired) { statusClass = 'expired'; statusLabel = '⚠ Expirée';  }
+  else                { statusClass = 'valid';   statusLabel = '● Valide';    }
+
+  const areaClass = cardValid ? 'valid' : 'invalid';
+  const el = document.getElementById('result-area');
+  el.className = 'result-area ' + areaClass;
+
+  const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const sexeDisplay = c.sexe === 'M' ? 'M / Male' : c.sexe === 'F' ? 'F / Female' : 'A';
+  const naissDisplay = c.naissance ? new Date(c.naissance).toLocaleDateString('fr-FR') : '—';
+  const expiryDisplay = c.expiration ? new Date(c.expiration).toLocaleDateString('fr-FR') : '—';
+
+  let expiryColor = '#1a1a2e';
+  const daysLeft = c.expiration ? Math.ceil((new Date(c.expiration) - new Date()) / 86400000) : null;
+  if (daysLeft !== null && daysLeft < 0)       expiryColor = '#dc2626';
+  else if (daysLeft !== null && daysLeft <= 30) expiryColor = '#ea580c';
+
+  const photoHTML = c.photo
+    ? `<img src="${c.photo}" alt="Photo"/>`
+    : `<div class="cni-silhouette"><svg viewBox="0 0 80 80" fill="none"><ellipse cx="40" cy="28" rx="16" ry="18" fill="#8aadcc"/><ellipse cx="40" cy="75" rx="28" ry="22" fill="#8aadcc"/></svg></div>`;
+
+  const prefix = {M:'M.',F:'Mme',A:''}[c.sexe] || '';
+  const mrzNom    = (c.nom||'').toUpperCase().replace(/ /g,'<').padEnd(13,'<');
+  const mrzPrenom = (c.prenom||'').toUpperCase().replace(/ /g,'<').padEnd(10,'<');
+  const mrzDate   = (c.naissance||'').replace(/-/g,'').slice(2)||'000000';
+
+  el.innerHTML = `
+    <div class="result-card">
+      <div class="card-topbar">
+        <span class="card-topbar-id">#${id}</span>
+        <span class="status-chip ${statusClass}">${statusLabel}</span>
+        ${c.renewalRequested ? '<span class="status-chip" style="background:rgba(124,58,237,0.15);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);">📬 Renouvellement</span>' : ''}
+        <span class="card-topbar-time">${now}</span>
+      </div>
+
+      <div class="cni-card" id="cni-${key}">
+        ${!isActif ? '<div class="inactive-stripe"></div>' : ''}
+        <div class="cni-accent"></div>
+        <div class="cni-photo-col">
+          <div class="cni-photo">${photoHTML}</div>
+          <div class="cni-sig-label">Signature</div>
+          <div style="width:62px;height:14px;border-bottom:1px solid #aaa;margin-top:2px;"></div>
+        </div>
+        <div class="cni-body">
+          <div class="cni-header">
+            <div class="cni-header-left">
+              <div class="cni-emblem"><img src="assets/drapeau.png" alt="Kerdoré"/></div>
+              <div>
+                <div class="cni-country">DÉMOCRATIE DE KERDORÉ</div>
+                <div class="cni-type">CARTE NATIONALE D'IDENTITÉ</div>
+                <div class="cni-type-en">NATIONAL IDENTITY CARD</div>
+              </div>
+            </div>
+            <div class="cni-kdr-badge">KDR</div>
+          </div>
+          <div class="cni-fields">
+            <div class="cni-field full">
+              <div class="cni-lbl">NOM / <span class="cni-lbl-en">Surname</span></div>
+              <div class="cni-val">${(c.nom||'').toUpperCase()}</div>
+            </div>
+            <div class="cni-field full">
+              <div class="cni-lbl">PRÉNOMS / <span class="cni-lbl-en">Given names</span></div>
+              <div class="cni-val">${c.prenom||'—'}</div>
+            </div>
+            <div class="cni-field">
+              <div class="cni-lbl">SEXE / <span class="cni-lbl-en">Sex</span></div>
+              <div class="cni-val">${sexeDisplay}</div>
+            </div>
+            <div class="cni-field">
+              <div class="cni-lbl">DATE DE NAISS.</div>
+              <div class="cni-val">${naissDisplay}</div>
+            </div>
+            <div class="cni-field">
+              <div class="cni-lbl">NATIONALITÉ</div>
+              <div class="cni-val sm">KERDOREINE</div>
+            </div>
+            <div class="cni-field">
+              <div class="cni-lbl">ADHÉSION</div>
+              <div class="cni-val sm">${c.adhesion||'—'}</div>
+            </div>
+          </div>
+          <div class="cni-bottom">
+            <div>
+              <div class="cni-docnum-lbl">N° DU DOCUMENT</div>
+              <div class="cni-docnum-val">${c.identifiant||id}</div>
+            </div>
+            <div class="cni-expiry">
+              <div class="cni-expiry-lbl">DATE D'EXPIR.</div>
+              <div class="cni-expiry-val" style="color:${expiryColor};">${expiryDisplay}</div>
+            </div>
+          </div>
+          <div class="cni-mrz">
+            KDR&lt;&lt;${mrzNom}&lt;${mrzPrenom}&lt;&lt;&lt;&lt;&lt;<br/>
+            ${id}KDR${mrzDate}&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        ${isActif
+          ? `<button class="btn btn-invalid" onclick="setStatus('${key}','inactif')">🔒 Suspendre la carte</button>`
+          : `<button class="btn btn-valid"   onclick="setStatus('${key}','actif')">✓ Réactiver la carte</button>`
+        }
+        <button class="btn btn-stop" style="flex:0;" onclick="resetResult()">✕</button>
+      </div>
+    </div>`;
+}
+
+function showNotFound(id) {
+  document.getElementById('result-area').className = 'result-area invalid';
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-notfound">
+      <div class="big">⚠</div>
+      <p class="notfound-id">#${id}</p>
+      <p style="margin-top:0.4rem;">Aucun citoyen trouvé avec cet identifiant.</p>
+      <p style="margin-top:0.2rem;">Document inconnu ou non enregistré.</p>
+    </div>`;
+}
+
+function showError(msg) {
+  document.getElementById('result-area').className = 'result-area invalid';
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-notfound">
+      <div class="big">⛔</div>
+      <p>Erreur Firebase : ${msg}</p>
+    </div>`;
+}
+
+function resetResult() {
+  lastCode = null;
+  document.getElementById('result-area').className = 'result-area';
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-idle">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="m14 14 3 3m3-3v3h-3"/></svg>
+      Pointez un DataMatrix vers la caméra
+    </div>`;
+}
+
+// ── TOGGLE STATUS ──
+window.setStatus = async function(key, newStatus) {
+  try {
+    await db.ref(`citizens/${key}/statut`).set(newStatus);
+    showToast(newStatus === 'actif' ? '✓ Carte réactivée' : '🔒 Carte suspendue', 'ok');
+    // Re-fetch and re-render
+    const snap = await db.ref(`citizens/${key}`).once('value');
+    showCard(key, snap.val(), key);
+    // Update history
+    const hi = history.find(h => h.key === key);
+    if (hi) {
+      hi.status = newStatus === 'actif' ? 'valid' : 'invalid';
+      renderHistory();
+    }
+  } catch(e) { showToast('Erreur : ' + e.message, 'err'); }
+};
+
+// ── HISTORY ──
+function addHistory(id, citizen, status) {
+  history.unshift({
+    id, key: id,
+    name: citizen ? `${(citizen.prenom||'')} ${(citizen.nom||'').toUpperCase()}` : '—',
+    status,
+    time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  });
+  if (history.length > 20) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (history.length === 0) {
+    el.innerHTML = '<p style="font-size:0.78rem;color:var(--muted);">Aucun scan effectué.</p>';
+    return;
+  }
+  el.innerHTML = history.map(h => `
+    <div class="history-item ${h.status}" onclick="reloadFromHistory('${h.id}')">
+      <span class="history-id">#${h.id}</span>
+      <span class="history-name">${h.name}</span>
+      <span class="history-status ${h.status}">${h.status === 'valid' ? '● Valide' : h.status === 'invalid' ? '● Invalide' : '— Inconnu'}</span>
+      <span class="history-time">${h.time}</span>
+    </div>`).join('');
+}
+
+window.reloadFromHistory = async function(id) {
+  showLoading(id);
+  try {
+    const snap = await db.ref(`citizens/${id}`).once('value');
+    if (snap.exists()) showCard(id, snap.val(), snap.key);
+    else showNotFound(id);
+  } catch(e) { showError(e.message); }
+};
+
+// ── HELPERS ──
+function setPill(text, active) {
+  const el = document.getElementById('scan-pill');
+  el.textContent = text;
+  el.className = 'scan-status-pill' + (active ? ' active' : '');
+}
+function setOverlay(state) {
+  document.getElementById('scan-overlay').className = 'scan-overlay ' + state;
+}
+
+function showToast(msg, type = 'ok') {
+  const t = document.getElementById('toast') || (() => {
+    const el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+    return el;
+  })();
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = type, 2200);
+}
+
+window.startScan  = startScan;
+window.stopScan   = stopScan;
+window.resetResult = resetResult;
+
+// ── INIT ──
+(async () => {
+  try {
+    await initCam();
+    setPill('Caméra prête → Scanner', false);
+  } catch(e) {
+    setPill('Erreur caméra : ' + e.message, false);
+  }
+})();
+</script>
+
+<div id="toast"></div>
+</body>
+</html>
+HTMLEOF
+echo "Done"
+Output
